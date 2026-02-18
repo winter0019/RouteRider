@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Trip } from '../types';
 import { ICONS, ROUTES, COLORS } from '../constants';
 
@@ -10,14 +10,44 @@ interface PassengerHomeProps {
 
 const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [originQuery, setOriginQuery] = useState('');
+  const [destQuery, setDestQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+
+  // We use useMemo to only re-filter when trips, originQuery, or destQuery (on button click) change
+  // Actually, let's trigger search on button click for better control as requested.
+  const [appliedFilters, setAppliedFilters] = useState({ origin: '', dest: '' });
+
+  const filteredTrips = useMemo(() => {
+    return trips.filter(trip => {
+      const [origin, destination] = trip.route.split('→').map(s => s.trim().toLowerCase());
+      const matchesOrigin = appliedFilters.origin === '' || origin.includes(appliedFilters.origin.toLowerCase());
+      const matchesDest = appliedFilters.dest === '' || destination.includes(appliedFilters.dest.toLowerCase());
+      return matchesOrigin && matchesDest;
+    });
+  }, [trips, appliedFilters]);
 
   useEffect(() => {
-    // Simulate a brief network fetch to ensure UI consistency
     const timer = setTimeout(() => {
       setIsInitialLoad(false);
     }, 600);
     return () => clearTimeout(timer);
   }, []);
+
+  const handleSearch = () => {
+    setIsSearching(true);
+    // Simulate a small delay for search feel
+    setTimeout(() => {
+      setAppliedFilters({ origin: originQuery, dest: destQuery });
+      setIsSearching(false);
+    }, 400);
+  };
+
+  const handleReset = () => {
+    setOriginQuery('');
+    setDestQuery('');
+    setAppliedFilters({ origin: '', dest: '' });
+  };
 
   if (isInitialLoad) {
     return (
@@ -35,16 +65,70 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
         <p className="text-gray-500 font-bold text-sm">Real-time trips from verified car owners.</p>
       </header>
 
+      {/* Search Section */}
+      <section className="bg-white border-2 border-slate-100 p-5 rounded-[2rem] shadow-sm space-y-4">
+        <div className="space-y-3">
+          <div className="relative">
+             <div className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-500">
+               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+             </div>
+             <input 
+               type="text" 
+               placeholder="From (Origin)" 
+               value={originQuery}
+               onChange={(e) => setOriginQuery(e.target.value)}
+               className="w-full pl-11 pr-4 py-4 bg-slate-50 border-2 border-transparent focus:border-emerald-500 rounded-2xl font-black text-sm outline-none transition-all"
+             />
+          </div>
+          <div className="relative">
+             <div className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-500">
+               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+             </div>
+             <input 
+               type="text" 
+               placeholder="To (Destination)" 
+               value={destQuery}
+               onChange={(e) => setDestQuery(e.target.value)}
+               className="w-full pl-11 pr-4 py-4 bg-slate-50 border-2 border-transparent focus:border-emerald-500 rounded-2xl font-black text-sm outline-none transition-all"
+             />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button 
+            onClick={handleSearch}
+            disabled={isSearching}
+            className="flex-1 bg-emerald-600 text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-emerald-100 flex items-center justify-center gap-2 hover:bg-emerald-700 active:scale-95 transition-all"
+          >
+            {isSearching ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : (
+              <>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                Search Rides
+              </>
+            )}
+          </button>
+          {(appliedFilters.origin !== '' || appliedFilters.dest !== '') && (
+            <button 
+              onClick={handleReset}
+              className="bg-slate-100 text-slate-500 px-4 rounded-2xl font-black text-sm hover:bg-slate-200 active:scale-95 transition-all"
+            >
+              Reset
+            </button>
+          )}
+        </div>
+      </section>
+
       <section className="space-y-4">
         <div className="flex items-center justify-between px-1">
-          <h3 className="font-black text-xs text-gray-400 uppercase tracking-widest">Available Routes</h3>
+          <h3 className="font-black text-xs text-gray-400 uppercase tracking-widest">
+            {appliedFilters.origin || appliedFilters.dest ? 'Filtered Results' : 'Available Routes'}
+          </h3>
           <span className="text-[10px] bg-emerald-100 text-emerald-700 font-black px-2 py-0.5 rounded-full uppercase">
-            {trips.length} Active
+            {filteredTrips.length} Active
           </span>
         </div>
         
-        {trips.length > 0 ? (
-          trips.map(trip => (
+        {filteredTrips.length > 0 ? (
+          filteredTrips.map(trip => (
             <div key={trip.trip_id} className="bg-white border-2 border-slate-100 p-5 rounded-3xl shadow-sm space-y-4 animate-in fade-in slide-in-from-bottom-2">
               <div className="flex justify-between items-start">
                 <div className="flex items-center gap-3">
@@ -96,7 +180,11 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
             <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto shadow-sm text-slate-300">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             </div>
-            <p className="text-sm font-black text-gray-500">No vehicles have posted trips yet.</p>
+            <p className="text-sm font-black text-gray-500">
+              {appliedFilters.origin || appliedFilters.dest 
+                ? "No trips match your search criteria." 
+                : "No vehicles have posted trips yet."}
+            </p>
             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest italic">Try changing your search</p>
           </div>
         )}
