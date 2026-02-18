@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { DriverProfile } from '../types';
 import { ICONS, COLORS } from '../constants';
@@ -6,9 +7,10 @@ interface SettingsProps {
   profile: DriverProfile;
   onLogout: () => void;
   onUpdate?: (p: DriverProfile) => void;
+  userRole: 'driver' | 'passenger';
 }
 
-const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate }) => {
+const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate, userRole }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({
     full_name: profile.full_name,
@@ -23,6 +25,8 @@ const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate }) 
     }
     setIsEditing(false);
   };
+
+  const isDriver = userRole === 'driver';
 
   return (
     <div className="space-y-6 text-black">
@@ -47,30 +51,37 @@ const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate }) 
             <label className="text-[10px] font-black text-gray-400 uppercase">Full Name</label>
             <input value={editData.full_name} onChange={e => setEditData({...editData, full_name: e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl font-black border-2 border-transparent focus:border-emerald-500 outline-none" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-[10px] font-black text-gray-400 uppercase">Make</label>
-              <input value={editData.car_make} onChange={e => setEditData({...editData, car_make: e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl font-black" />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-black text-gray-400 uppercase">Model</label>
-              <input value={editData.car_model} onChange={e => setEditData({...editData, car_model: e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl font-black" />
-            </div>
-          </div>
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-gray-400 uppercase">Plate Number</label>
-            <input value={editData.plate_number} onChange={e => setEditData({...editData, plate_number: e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl font-black" />
-          </div>
+          
+          {isDriver && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-gray-400 uppercase">Make</label>
+                  <input value={editData.car_make} onChange={e => setEditData({...editData, car_make: e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl font-black" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-gray-400 uppercase">Model</label>
+                  <input value={editData.car_model} onChange={e => setEditData({...editData, car_model: e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl font-black" />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-gray-400 uppercase">Plate Number</label>
+                <input value={editData.plate_number} onChange={e => setEditData({...editData, plate_number: e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl font-black" />
+              </div>
+            </>
+          )}
         </div>
       ) : (
         <div className="bg-white border-2 border-slate-100 p-6 rounded-3xl flex items-center gap-4 shadow-sm">
           <div className="w-16 h-16 rounded-2xl bg-slate-100 overflow-hidden border-2 border-emerald-50">
-            <img src={profile.profile_photo_url || `https://picsum.photos/150/150?seed=${profile.user_id}`} alt="Driver" className="w-full h-full object-cover" />
+            <img src={profile.profile_photo_url || `https://picsum.photos/150/150?seed=${profile.user_id}`} alt="User" className="w-full h-full object-cover" />
           </div>
           <div>
             <h3 className="font-black text-lg">{profile.full_name}</h3>
-            <p className="text-sm text-gray-500 font-bold">{profile.phone_number}</p>
-            <div className="mt-1 inline-flex items-center px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase border border-emerald-100">Verified Driver ✓</div>
+            <p className="text-sm text-gray-500 font-bold">{profile.phone_number || 'No phone set'}</p>
+            <div className="mt-1 inline-flex items-center px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase border border-emerald-100">
+              Verified {isDriver ? 'Driver' : 'Passenger'} ✓
+            </div>
           </div>
         </div>
       )}
@@ -79,16 +90,20 @@ const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate }) 
         <section className="space-y-2">
           <h3 className="px-1 text-[10px] font-black text-gray-400 uppercase tracking-widest">Account Details</h3>
           <div className="bg-white border-2 border-slate-100 rounded-3xl overflow-hidden shadow-sm">
-            <div className="p-4 border-b border-slate-100 flex justify-between">
-              <span className="text-gray-500 font-bold text-sm">Vehicle</span>
-              <span className="font-black text-sm">{profile.car_make} {profile.car_model}</span>
-            </div>
-            <div className="p-4 border-b border-slate-100 flex justify-between">
-              <span className="text-gray-500 font-bold text-sm">Plate</span>
-              <span className="font-black text-sm">{profile.plate_number}</span>
-            </div>
+            {isDriver && (
+              <>
+                <div className="p-4 border-b border-slate-100 flex justify-between">
+                  <span className="text-gray-500 font-bold text-sm">Vehicle</span>
+                  <span className="font-black text-sm">{profile.car_make} {profile.car_model}</span>
+                </div>
+                <div className="p-4 border-b border-slate-100 flex justify-between">
+                  <span className="text-gray-500 font-bold text-sm">Plate</span>
+                  <span className="font-black text-sm">{profile.plate_number}</span>
+                </div>
+              </>
+            )}
             <div className="p-4 flex justify-between">
-              <span className="text-gray-500 font-bold text-sm">ID Status</span>
+              <span className="text-gray-500 font-bold text-sm">Account Status</span>
               <span className="text-emerald-600 font-black text-sm uppercase">Active</span>
             </div>
           </div>

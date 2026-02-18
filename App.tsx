@@ -91,7 +91,7 @@ const App: React.FC = () => {
         case 'wallet':
           return <WalletView profile={profile!} transactions={transactions} />;
         case 'settings':
-          return <SettingsView profile={profile!} onLogout={handleLogout} onUpdate={handleUpdateProfile} />;
+          return <SettingsView profile={profile!} onLogout={handleLogout} onUpdate={handleUpdateProfile} userRole={userRole} />;
         default:
           return <PassengerHome trips={allAvailableTrips} onBook={() => {}} />;
       }
@@ -107,7 +107,7 @@ const App: React.FC = () => {
       case 'wallet':
         return <WalletView profile={profile!} transactions={transactions} />;
       case 'settings':
-        return <SettingsView profile={profile!} onLogout={handleLogout} onUpdate={handleUpdateProfile} />;
+        return <SettingsView profile={profile!} onLogout={handleLogout} onUpdate={handleUpdateProfile} userRole={userRole!} />;
       default:
         return null;
     }
