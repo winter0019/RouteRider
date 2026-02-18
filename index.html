@@ -14,18 +14,16 @@
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             background-color: #f8fafc;
-            color: #000000 !important; /* Force black text for maximum visibility */
+            color: #000000 !important;
             margin: 0;
             padding: 0;
         }
         #root {
             min-height: 100vh;
         }
-        /* Ensure all text elements inherit the visible color */
         h1, h2, h3, h4, p, span, div, label, input, button {
             color: inherit;
         }
-        /* Custom scrollbar for better mobile feel */
         ::-webkit-scrollbar {
             width: 4px;
         }
@@ -53,5 +51,6 @@
 </head>
 <body>
     <div id="root"></div>
+    <script type="module" src="index.tsx"></script>
 </body>
 </html>
