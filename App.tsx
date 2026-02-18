@@ -89,7 +89,7 @@ const App: React.FC = () => {
             alert(`Booking requested for ${trip.route}!`);
           }} />;
         case 'wallet':
-          return <WalletView profile={profile!} transactions={transactions} />;
+          return <WalletView profile={profile!} transactions={transactions} userRole={userRole} />;
         case 'settings':
           return <SettingsView profile={profile!} onLogout={handleLogout} onUpdate={handleUpdateProfile} userRole={userRole} />;
         default:
@@ -105,7 +105,7 @@ const App: React.FC = () => {
       case 'bookings':
         return <BookingManagement bookings={bookings} setBookings={setBookings} activeTrip={activeTrip} setActiveTrip={setActiveTrip} setTransactions={setTransactions} setProfile={setProfile} />;
       case 'wallet':
-        return <WalletView profile={profile!} transactions={transactions} />;
+        return <WalletView profile={profile!} transactions={transactions} userRole={userRole!} />;
       case 'settings':
         return <SettingsView profile={profile!} onLogout={handleLogout} onUpdate={handleUpdateProfile} userRole={userRole!} />;
       default:

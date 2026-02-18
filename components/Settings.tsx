@@ -103,7 +103,7 @@ const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate, us
               </>
             )}
             <div className="p-4 flex justify-between">
-              <span className="text-gray-500 font-bold text-sm">Account Status</span>
+              <span className="text-gray-500 font-bold text-sm">ID Status</span>
               <span className="text-emerald-600 font-black text-sm uppercase">Active</span>
             </div>
           </div>
