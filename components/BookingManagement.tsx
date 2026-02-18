@@ -30,7 +30,8 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
           passenger_trips: 12,
           passenger_photo: 'https://picsum.photos/100/100?seed=sarah',
           seats_booked: 1,
-          amount_paid: ROUTES.PRICE_PER_SEAT,
+          // Fixed: Use correct property name SUGGESTED_PRICE_PER_SEAT
+          amount_paid: ROUTES.SUGGESTED_PRICE_PER_SEAT,
           status: BookingStatus.PENDING,
           created_at: new Date().toISOString(),
         };
@@ -60,7 +61,8 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
   const completeTrip = () => {
     if (!activeTrip) return;
 
-    const totalRevenue = activeTrip.seats_booked * ROUTES.PRICE_PER_SEAT;
+    // Fixed: Use correct property name SUGGESTED_PRICE_PER_SEAT
+    const totalRevenue = activeTrip.seats_booked * ROUTES.SUGGESTED_PRICE_PER_SEAT;
     const netEarnings = totalRevenue - ROUTES.COMMISSION_PER_TRIP;
 
     // Create Transaction

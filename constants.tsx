@@ -14,12 +14,12 @@ import {
   ChevronRight,
   LogOut,
   Bell,
-  Star
+  Star,
+  ArrowRightLeft
 } from 'lucide-react';
 
 export const ROUTES = {
-  DEFAULT: 'Daura → Katsina',
-  PRICE_PER_SEAT: 2467,
+  SUGGESTED_PRICE_PER_SEAT: 2500,
   COMMISSION_PER_TRIP: 1000,
   NO_SHOW_COMPENSATION: 2000
 };
@@ -46,4 +46,5 @@ export const ICONS = {
   Logout: <LogOut size={20} />,
   Notification: <Bell size={20} />,
   Star: <Star size={16} fill="currentColor" />,
+  Swap: <ArrowRightLeft size={18} />,
 };

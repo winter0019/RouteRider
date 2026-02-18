@@ -10,13 +10,22 @@ interface TripPostingProps {
 }
 
 const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigate }) => {
+  const [origin, setOrigin] = useState('Katsina');
+  const [destination, setDestination] = useState('Kano');
   const [departureTime, setDepartureTime] = useState('07:00');
   const [seats, setSeats] = useState(3);
   const [isPosting, setIsPosting] = useState(false);
 
+  const handleSwap = () => {
+    const temp = origin;
+    setOrigin(destination);
+    setDestination(temp);
+  };
+
   const handlePost = () => {
+    if (!origin || !destination) return alert("Please enter both origin and destination");
     setIsPosting(true);
-    // Simulate API call
+    
     setTimeout(() => {
       const now = new Date();
       const depTime = new Date();
@@ -26,7 +35,7 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
       const newTrip: Trip = {
         trip_id: Math.random().toString(36).substr(2, 9),
         driver_id: 'driver-123',
-        route: ROUTES.DEFAULT,
+        route: `${origin} → ${destination}`,
         departure_time: depTime.toISOString(),
         seats_available: seats,
         seats_booked: 0,
@@ -74,39 +83,60 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
     <div className="space-y-8 text-black">
       <header>
         <h2 className="text-2xl font-black text-black">Post New Trip</h2>
-        <p className="text-gray-600 font-bold">Fill empty seats and offset your fuel costs.</p>
+        <p className="text-gray-600 font-bold">Where are you heading today?</p>
       </header>
 
       <div className="space-y-6">
-        {/* Route Selector (Hardcoded for MVP) */}
-        <div className="space-y-2">
-          <label className="text-xs font-black text-gray-500 uppercase tracking-widest">Route</label>
-          <div className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl flex items-center justify-between text-black font-black">
-            <span className="flex items-center gap-2">
-              <MapPin size={22} className="text-emerald-500" />
-              {ROUTES.DEFAULT}
-            </span>
-            <span className="text-[10px] bg-emerald-100 px-2 py-1 rounded-md uppercase font-black text-emerald-700 tracking-tight">Active Route</span>
+        {/* Route Inputs */}
+        <div className="space-y-3 relative">
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Starting From</label>
+            <div className="flex items-center gap-3 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl">
+              <div className="text-emerald-500"><MapPin size={20} /></div>
+              <input 
+                placeholder="Origin (e.g. Daura)"
+                value={origin}
+                onChange={(e) => setOrigin(e.target.value)}
+                className="bg-transparent w-full font-black text-black outline-none placeholder:text-gray-300"
+              />
+            </div>
+          </div>
+
+          <button 
+            onClick={handleSwap}
+            className="absolute right-4 top-1/2 -translate-y-1/2 mt-1 z-10 w-10 h-10 bg-white border-2 border-slate-100 rounded-full flex items-center justify-center text-emerald-600 shadow-sm active:rotate-180 transition-transform duration-300"
+          >
+            {ICONS.Swap}
+          </button>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Destination</label>
+            <div className="flex items-center gap-3 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl">
+              <div className="text-emerald-500"><MapPin size={20} /></div>
+              <input 
+                placeholder="Where to? (e.g. Kano)"
+                value={destination}
+                onChange={(e) => setDestination(e.target.value)}
+                className="bg-transparent w-full font-black text-black outline-none placeholder:text-gray-300"
+              />
+            </div>
           </div>
         </div>
 
         {/* Departure Time */}
         <div className="space-y-2">
-          <label className="text-xs font-black text-gray-500 uppercase tracking-widest">Departure Time</label>
+          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Departure Time</label>
           <input 
             type="time" 
             value={departureTime}
             onChange={(e) => setDepartureTime(e.target.value)}
             className="w-full p-5 bg-white border-2 border-slate-200 rounded-2xl text-xl font-black text-black focus:outline-none focus:ring-4 focus:ring-emerald-500/20 transition-all"
-            min="05:00"
-            max="22:00"
           />
-          <p className="text-[10px] text-gray-500 px-1 font-bold italic">Highest demand is between 5:00 AM and 9:00 AM.</p>
         </div>
 
         {/* Seats Selector */}
         <div className="space-y-2">
-          <label className="text-xs font-black text-gray-500 uppercase tracking-widest">Available Seats</label>
+          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Available Seats</label>
           <div className="flex gap-3">
             {[1, 2, 3, 4].map(n => (
               <button 
@@ -114,24 +144,20 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
                 onClick={() => setSeats(n)}
                 className={`flex-1 p-5 rounded-2xl font-black text-2xl transition-all ${
                   seats === n 
-                  ? `${COLORS.primary} text-white border-transparent shadow-2xl shadow-emerald-200 scale-110` 
-                  : 'bg-white border-2 text-gray-400 border-slate-100 hover:border-emerald-200'
+                  ? `${COLORS.primary} text-white border-transparent shadow-2xl shadow-emerald-200 scale-105` 
+                  : 'bg-white border-2 text-gray-400 border-slate-100'
                 }`}
               >
                 {n}
               </button>
             ))}
           </div>
-          <div className="flex justify-between items-center mt-3 px-1">
-            <span className="text-xs text-gray-600 font-bold">Potential Earnings:</span>
-            <span className="text-sm font-black text-emerald-600">₦{(seats * ROUTES.PRICE_PER_SEAT).toLocaleString()}</span>
-          </div>
         </div>
 
         <button 
           onClick={handlePost}
-          disabled={isPosting}
-          className={`w-full ${COLORS.primary} text-white p-5 rounded-2xl font-black text-xl shadow-2xl shadow-emerald-200 hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-3 mt-6`}
+          disabled={isPosting || !origin || !destination}
+          className={`w-full ${COLORS.primary} text-white p-5 rounded-2xl font-black text-xl shadow-2xl shadow-emerald-200 hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-3 mt-6 disabled:opacity-50`}
         >
           {isPosting ? (
             <div className="w-7 h-7 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
