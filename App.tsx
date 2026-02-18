@@ -1,0 +1,117 @@
+
+import React, { useState, useEffect } from 'react';
+import { 
+  TripStatus, 
+  BookingStatus, 
+  DriverProfile, 
+  Trip, 
+  Booking, 
+  Transaction 
+} from './types';
+import { ROUTES, ICONS, COLORS } from './constants';
+import Dashboard from './components/Dashboard';
+import TripPosting from './components/TripPosting';
+import BookingManagement from './components/BookingManagement';
+import WalletView from './components/Wallet';
+import ProfileOnboarding from './components/ProfileOnboarding';
+import SettingsView from './components/Settings';
+
+type Page = 'dashboard' | 'post-trip' | 'bookings' | 'wallet' | 'settings';
+
+const App: React.FC = () => {
+  const [currentPage, setCurrentPage] = useState<Page>('dashboard');
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [profile, setProfile] = useState<DriverProfile | null>(null);
+  const [activeTrip, setActiveTrip] = useState<Trip | null>(null);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+
+  useEffect(() => {
+    const savedProfile = localStorage.getItem('rr_profile');
+    if (savedProfile) {
+      setProfile(JSON.parse(savedProfile));
+      setIsLoggedIn(true);
+    }
+  }, []);
+
+  const handleUpdateProfile = (newProfile: DriverProfile) => {
+    setProfile(newProfile);
+    localStorage.setItem('rr_profile', JSON.stringify(newProfile));
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('rr_profile');
+    setIsLoggedIn(false);
+    setProfile(null);
+    setActiveTrip(null);
+    setBookings([]);
+    setTransactions([]);
+    setCurrentPage('dashboard');
+  };
+
+  if (!isLoggedIn) {
+    return (
+      <ProfileOnboarding 
+        onComplete={(p) => {
+          setProfile(p);
+          setIsLoggedIn(true);
+          localStorage.setItem('rr_profile', JSON.stringify(p));
+        }} 
+      />
+    );
+  }
+
+  const renderPage = () => {
+    switch (currentPage) {
+      case 'dashboard':
+        return <Dashboard profile={profile!} activeTrip={activeTrip} bookings={bookings} onNavigate={setCurrentPage} />;
+      case 'post-trip':
+        return <TripPosting onPost={setActiveTrip} activeTrip={activeTrip} onNavigate={setCurrentPage} />;
+      case 'bookings':
+        return <BookingManagement bookings={bookings} setBookings={setBookings} activeTrip={activeTrip} setActiveTrip={setActiveTrip} setTransactions={setTransactions} setProfile={setProfile} />;
+      case 'wallet':
+        return <WalletView profile={profile!} transactions={transactions} />;
+      case 'settings':
+        return <SettingsView profile={profile!} onLogout={handleLogout} onUpdate={handleUpdateProfile} />;
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="flex flex-col min-h-screen max-w-md mx-auto bg-white shadow-xl relative overflow-hidden text-black font-bold">
+      <header className="px-4 py-4 flex items-center justify-between border-b sticky top-0 bg-white z-10">
+        <button onClick={() => setCurrentPage('dashboard')} className="flex items-center gap-2">
+          <div className={`w-8 h-8 ${COLORS.primary} rounded-full flex items-center justify-center text-white font-black`}>R</div>
+          <h1 className="font-black text-xl">RouteRider</h1>
+        </button>
+        <div className="flex items-center gap-3">
+          <button className="p-2 rounded-full hover:bg-gray-100 relative text-black">{ICONS.Notification}</button>
+          <button onClick={() => setCurrentPage('settings')} className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden border-2 border-emerald-50 shadow-sm">
+            <img src={profile?.profile_photo_url || `https://picsum.photos/100/100?seed=${profile?.user_id}`} alt="Me" className="w-full h-full object-cover" />
+          </button>
+        </div>
+      </header>
+      <main className="flex-1 overflow-y-auto pb-24 p-4">{renderPage()}</main>
+      <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t px-6 py-3 flex justify-between items-center z-20 shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
+        <NavItem active={currentPage === 'dashboard'} onClick={() => setCurrentPage('dashboard')} icon={ICONS.Dashboard} label="Home" />
+        <NavItem active={currentPage === 'post-trip'} onClick={() => setCurrentPage('post-trip')} icon={ICONS.Post} label="Post" />
+        <NavItem active={currentPage === 'bookings'} onClick={() => setCurrentPage('bookings')} icon={ICONS.Notification} label="Bookings" badge={bookings.filter(b => b.status === BookingStatus.PENDING).length} />
+        <NavItem active={currentPage === 'wallet'} onClick={() => setCurrentPage('wallet')} icon={ICONS.Wallet} label="Wallet" />
+        <NavItem active={currentPage === 'settings'} onClick={() => setCurrentPage('settings')} icon={ICONS.Settings} label="More" />
+      </nav>
+    </div>
+  );
+};
+
+const NavItem: React.FC<{ active: boolean, onClick: () => void, icon: React.ReactNode, label: string, badge?: number }> = ({ active, onClick, icon, label, badge }) => (
+  <button onClick={onClick} className={`flex flex-col items-center gap-1 relative transition-all ${active ? 'text-emerald-700 scale-110' : 'text-gray-500'}`}>
+    <div className="relative">
+      {icon}
+      {badge && badge > 0 ? <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-black">{badge}</span> : null}
+    </div>
+    <span className="text-[10px] font-black">{label}</span>
+  </button>
+);
+
+export default App;

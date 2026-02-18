@@ -1,0 +1,7 @@
+{
+  "name": "RouteRider Driver MVP",
+  "description": "A monetization platform for Daura-Katsina commuter drivers to fill empty seats and offset fuel costs.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
