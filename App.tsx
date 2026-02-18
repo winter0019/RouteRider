@@ -26,22 +26,50 @@ const App: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [profile, setProfile] = useState<DriverProfile | null>(null);
   
-  // Shared trips state for the local demo
+  // Persisted trips state for the local demo
   const [allAvailableTrips, setAllAvailableTrips] = useState<Trip[]>([]);
   const [activeTrip, setActiveTrip] = useState<Trip | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
+  // Load initial data from localStorage
   useEffect(() => {
     const savedProfile = localStorage.getItem('rr_profile');
     const savedRole = localStorage.getItem('rr_role') as UserRole;
+    const savedTrips = localStorage.getItem('rr_all_trips');
+    const savedActiveTrip = localStorage.getItem('rr_active_trip');
+    const savedBookings = localStorage.getItem('rr_bookings');
+    const savedTransactions = localStorage.getItem('rr_transactions');
+
     if (savedProfile && savedRole) {
       setProfile(JSON.parse(savedProfile));
       setUserRole(savedRole);
       setIsLoggedIn(true);
       if (savedRole === 'passenger') setCurrentPage('search');
     }
+
+    if (savedTrips) setAllAvailableTrips(JSON.parse(savedTrips));
+    if (savedActiveTrip) setActiveTrip(JSON.parse(savedActiveTrip));
+    if (savedBookings) setBookings(JSON.parse(savedBookings));
+    if (savedTransactions) setTransactions(JSON.parse(savedTransactions));
   }, []);
+
+  // Persistence helpers
+  const persistTrips = (trips: Trip[]) => {
+    setAllAvailableTrips(trips);
+    localStorage.setItem('rr_all_trips', JSON.stringify(trips));
+  };
+
+  const persistActiveTrip = (trip: Trip | null) => {
+    setActiveTrip(trip);
+    if (trip) localStorage.setItem('rr_active_trip', JSON.stringify(trip));
+    else localStorage.removeItem('rr_active_trip');
+  };
+
+  const persistBookings = (newBookings: Booking[]) => {
+    setBookings(newBookings);
+    localStorage.setItem('rr_bookings', JSON.stringify(newBookings));
+  };
 
   const handleUpdateProfile = (newProfile: DriverProfile) => {
     setProfile(newProfile);
@@ -51,11 +79,12 @@ const App: React.FC = () => {
   const handleLogout = () => {
     localStorage.removeItem('rr_profile');
     localStorage.removeItem('rr_role');
+    // Note: We don't remove rr_all_trips here because they are global to the platform
     setIsLoggedIn(false);
     setProfile(null);
     setUserRole(null);
-    setActiveTrip(null);
-    setBookings([]);
+    persistActiveTrip(null);
+    persistBookings([]);
     setTransactions([]);
     setCurrentPage('dashboard');
   };
@@ -76,8 +105,9 @@ const App: React.FC = () => {
   }
 
   const handlePostTrip = (trip: Trip) => {
-    setActiveTrip(trip);
-    setAllAvailableTrips(prev => [trip, ...prev]);
+    persistActiveTrip(trip);
+    const updatedTrips = [trip, ...allAvailableTrips];
+    persistTrips(updatedTrips);
   };
 
   const renderPage = () => {
@@ -85,8 +115,7 @@ const App: React.FC = () => {
       switch (currentPage) {
         case 'search':
           return <PassengerHome trips={allAvailableTrips} onBook={(trip) => {
-            // Simulate booking from passenger side
-            alert(`Booking requested for ${trip.route}!`);
+            alert(`Booking requested for ${trip.route}! (Demo: Driver will see this in their Bookings tab)`);
           }} />;
         case 'wallet':
           return <WalletView profile={profile!} transactions={transactions} userRole={userRole} />;
@@ -103,7 +132,14 @@ const App: React.FC = () => {
       case 'post-trip':
         return <TripPosting onPost={handlePostTrip} activeTrip={activeTrip} onNavigate={setCurrentPage} />;
       case 'bookings':
-        return <BookingManagement bookings={bookings} setBookings={setBookings} activeTrip={activeTrip} setActiveTrip={setActiveTrip} setTransactions={setTransactions} setProfile={setProfile} />;
+        return <BookingManagement 
+          bookings={bookings} 
+          setBookings={persistBookings} 
+          activeTrip={activeTrip} 
+          setActiveTrip={persistActiveTrip} 
+          setTransactions={setTransactions} 
+          setProfile={setProfile} 
+        />;
       case 'wallet':
         return <WalletView profile={profile!} transactions={transactions} userRole={userRole!} />;
       case 'settings':

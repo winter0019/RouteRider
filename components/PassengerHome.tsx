@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Trip } from '../types';
 import { ICONS, ROUTES, COLORS } from '../constants';
 
@@ -9,6 +9,25 @@ interface PassengerHomeProps {
 }
 
 const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+
+  useEffect(() => {
+    // Simulate a brief network fetch to ensure UI consistency
+    const timer = setTimeout(() => {
+      setIsInitialLoad(false);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (isInitialLoad) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
+        <div className="w-12 h-12 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+        <p className="font-black text-gray-400 animate-pulse">Checking for available rides...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <header className="space-y-1">
