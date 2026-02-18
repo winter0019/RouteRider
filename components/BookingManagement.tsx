@@ -5,9 +5,9 @@ import { ICONS, COLORS, ROUTES } from '../constants';
 
 interface BookingManagementProps {
   bookings: Booking[];
-  setBookings: React.Dispatch<React.SetStateAction<Booking[]>>;
+  setBookings: (newBookings: Booking[]) => void;
   activeTrip: Trip | null;
-  setActiveTrip: React.Dispatch<React.SetStateAction<Trip | null>>;
+  setActiveTrip: (trip: Trip | null) => void;
   setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>;
   setProfile: React.Dispatch<React.SetStateAction<DriverProfile | null>>;
 }
@@ -17,42 +17,48 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
 }) => {
   const [viewingPassenger, setViewingPassenger] = useState<Booking | null>(null);
 
-  // Mock incoming booking logic for demo
+  // Mock initial demo booking ONLY if absolutely empty and active trip exists
   useEffect(() => {
     if (activeTrip && activeTrip.status === TripStatus.POSTED && bookings.length === 0) {
       const timer = setTimeout(() => {
         const mockBooking: Booking = {
-          booking_id: 'b-' + Math.random().toString(36).substr(2, 5),
+          booking_id: 'b-mock',
           trip_id: activeTrip.trip_id,
-          passenger_id: 'p-1',
+          passenger_id: 'p-sarah',
           passenger_name: 'Sarah O.',
           passenger_rating: 4.8,
           passenger_trips: 12,
           passenger_photo: 'https://picsum.photos/100/100?seed=sarah',
           seats_booked: 1,
-          // Fixed: Use correct property name SUGGESTED_PRICE_PER_SEAT
           amount_paid: ROUTES.SUGGESTED_PRICE_PER_SEAT,
           status: BookingStatus.PENDING,
           created_at: new Date().toISOString(),
         };
         setBookings([mockBooking]);
-      }, 3000);
+      }, 5000);
       return () => clearTimeout(timer);
     }
   }, [activeTrip, bookings.length, setBookings]);
 
   const handleAction = (bookingId: string, action: 'accept' | 'reject') => {
-    setBookings(prev => prev.map(b => 
+    const updatedBookings = bookings.map(b => 
       b.booking_id === bookingId 
       ? { ...b, status: action === 'accept' ? BookingStatus.ACCEPTED : BookingStatus.REJECTED }
       : b
-    ));
+    );
+    setBookings(updatedBookings);
 
     if (action === 'accept' && activeTrip) {
+      // Find the specific booking to see how many seats were taken
+      const b = bookings.find(x => x.booking_id === bookingId);
+      const seats = b ? b.seats_booked : 1;
+      
+      const newBookedCount = activeTrip.seats_booked; // seats_booked was already incremented on initial request for better visual feedback
+      // Actually, in handleBookTrip in App.tsx we already incremented it.
+      // So here we just transition the status if full.
       setActiveTrip({
         ...activeTrip,
-        seats_booked: activeTrip.seats_booked + 1,
-        status: (activeTrip.seats_booked + 1) === activeTrip.seats_available ? TripStatus.IN_PROGRESS : TripStatus.POSTED
+        status: (activeTrip.seats_booked) === activeTrip.seats_available ? TripStatus.IN_PROGRESS : TripStatus.POSTED
       });
     }
     setViewingPassenger(null);
@@ -61,11 +67,9 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
   const completeTrip = () => {
     if (!activeTrip) return;
 
-    // Fixed: Use correct property name SUGGESTED_PRICE_PER_SEAT
     const totalRevenue = activeTrip.seats_booked * ROUTES.SUGGESTED_PRICE_PER_SEAT;
     const netEarnings = totalRevenue - ROUTES.COMMISSION_PER_TRIP;
 
-    // Create Transaction
     const newTx: Transaction = {
       transaction_id: 'tx-' + Math.random().toString(36).substr(2, 5),
       user_id: activeTrip.driver_id,
@@ -85,6 +89,11 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
 
     setActiveTrip(null);
     setBookings([]);
+    
+    // Also clear from global list
+    const trips = JSON.parse(localStorage.getItem('rr_all_trips') || '[]');
+    const updatedTrips = trips.filter((t: any) => t.trip_id !== activeTrip.trip_id);
+    localStorage.setItem('rr_all_trips', JSON.stringify(updatedTrips));
   };
 
   const pendingBookings = bookings.filter(b => b.status === BookingStatus.PENDING);
@@ -112,7 +121,7 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
         <h3 className="font-bold text-sm text-slate-400 uppercase tracking-widest">Pending Requests ({pendingBookings.length})</h3>
         {pendingBookings.length > 0 ? (
           pendingBookings.map(booking => (
-            <div key={booking.booking_id} className="bg-white border border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+            <div key={booking.booking_id} className="bg-white border-2 border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
               <div className="flex items-center gap-3">
                 <img src={booking.passenger_photo} className="w-12 h-12 rounded-full border-2 border-emerald-50" />
                 <div>
@@ -163,7 +172,7 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
               </div>
             </div>
           ))}
-          {activeTrip && [...Array(activeTrip.seats_available - activeTrip.seats_booked)].map((_, i) => (
+          {activeTrip && [...Array(Math.max(0, activeTrip.seats_available - acceptedBookings.length))].map((_, i) => (
             <div key={i} className="border-2 border-dashed border-slate-100 rounded-2xl p-4 flex items-center justify-center text-slate-300 text-sm font-bold">
               Empty Seat
             </div>
@@ -174,7 +183,7 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
       {/* Passenger Profile Modal */}
       {viewingPassenger && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl">
+          <div className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="p-6 text-center space-y-4">
               <img src={viewingPassenger.passenger_photo} className="w-24 h-24 rounded-full mx-auto border-4 border-emerald-50" />
               <div>

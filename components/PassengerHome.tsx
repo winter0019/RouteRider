@@ -13,9 +13,9 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
   const [originQuery, setOriginQuery] = useState('');
   const [destQuery, setDestQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [bookingTripId, setBookingTripId] = useState<string | null>(null);
+  const [bookedTripIds, setBookedTripIds] = useState<Set<string>>(new Set());
 
-  // We use useMemo to only re-filter when trips, originQuery, or destQuery (on button click) change
-  // Actually, let's trigger search on button click for better control as requested.
   const [appliedFilters, setAppliedFilters] = useState({ origin: '', dest: '' });
 
   const filteredTrips = useMemo(() => {
@@ -36,7 +36,6 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
 
   const handleSearch = () => {
     setIsSearching(true);
-    // Simulate a small delay for search feel
     setTimeout(() => {
       setAppliedFilters({ origin: originQuery, dest: destQuery });
       setIsSearching(false);
@@ -47,6 +46,19 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
     setOriginQuery('');
     setDestQuery('');
     setAppliedFilters({ origin: '', dest: '' });
+  };
+
+  const handleBook = (trip: Trip) => {
+    if (trip.seats_available <= trip.seats_booked) return;
+    
+    setBookingTripId(trip.trip_id);
+    
+    // Simulate API call
+    setTimeout(() => {
+      onBook(trip);
+      setBookingTripId(null);
+      setBookedTripIds(prev => new Set(prev).add(trip.trip_id));
+    }, 1500);
   };
 
   if (isInitialLoad) {
@@ -128,53 +140,70 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
         </div>
         
         {filteredTrips.length > 0 ? (
-          filteredTrips.map(trip => (
-            <div key={trip.trip_id} className="bg-white border-2 border-slate-100 p-5 rounded-3xl shadow-sm space-y-4 animate-in fade-in slide-in-from-bottom-2">
-              <div className="flex justify-between items-start">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>
-                  </div>
-                  <div>
-                    <h4 className="font-black text-emerald-900 leading-tight">
-                      {trip.route.split('→')[0]} <span className="text-gray-300 font-medium">to</span> {trip.route.split('→')[1]}
-                    </h4>
-                    <div className="flex items-center gap-1 text-[10px] font-black text-amber-500 uppercase tracking-tighter mt-0.5">
-                      {ICONS.Star} 4.9 • Verified Owner
+          filteredTrips.map(trip => {
+            const isBooked = bookedTripIds.has(trip.trip_id);
+            const isBooking = bookingTripId === trip.trip_id;
+            const remaining = trip.seats_available - trip.seats_booked;
+
+            return (
+              <div key={trip.trip_id} className="bg-white border-2 border-slate-100 p-5 rounded-3xl shadow-sm space-y-4 animate-in fade-in slide-in-from-bottom-2">
+                <div className="flex justify-between items-start">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>
+                    </div>
+                    <div>
+                      <h4 className="font-black text-emerald-900 leading-tight">
+                        {trip.route.split('→')[0]} <span className="text-gray-300 font-medium">to</span> {trip.route.split('→')[1]}
+                      </h4>
+                      <div className="flex items-center gap-1 text-[10px] font-black text-amber-500 uppercase tracking-tighter mt-0.5">
+                        {ICONS.Star} 4.9 • Verified Owner
+                      </div>
                     </div>
                   </div>
+                  <div className="text-right">
+                     <p className="text-xl font-black text-emerald-600">₦{ROUTES.SUGGESTED_PRICE_PER_SEAT.toLocaleString()}</p>
+                     <p className="text-[10px] font-bold text-gray-400">per seat</p>
+                  </div>
                 </div>
-                <div className="text-right">
-                   <p className="text-xl font-black text-emerald-600">₦{ROUTES.SUGGESTED_PRICE_PER_SEAT.toLocaleString()}</p>
-                   <p className="text-[10px] font-bold text-gray-400">per seat</p>
-                </div>
-              </div>
 
-              <div className="flex items-center justify-between border-y border-slate-50 py-3">
-                <div className="flex items-center gap-2">
-                   <div className="text-gray-400">{ICONS.Clock}</div>
-                   <p className="font-black text-sm text-black">{new Date(trip.departure_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                <div className="flex items-center justify-between border-y border-slate-50 py-3">
+                  <div className="flex items-center gap-2">
+                     <div className="text-gray-400">{ICONS.Clock}</div>
+                     <p className="font-black text-sm text-black">{new Date(trip.departure_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                     <div className="text-gray-400">{ICONS.Car}</div>
+                     <p className="font-black text-sm text-black">Toyota Corolla</p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                   <div className="text-gray-400">{ICONS.Car}</div>
-                   <p className="font-black text-sm text-black">Toyota Corolla</p>
-                </div>
-              </div>
 
-              <div className="flex items-center justify-between gap-4">
-                 <div className="flex-1 flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span className="text-xs font-black text-emerald-700">{trip.seats_available - trip.seats_booked} seats remaining</span>
-                 </div>
-                 <button 
-                  onClick={() => onBook(trip)}
-                  className="bg-black text-white px-6 py-3 rounded-2xl font-black text-sm shadow-xl active:scale-95 transition-all"
-                 >
-                   Book Seat
-                 </button>
+                <div className="flex items-center justify-between gap-4">
+                   <div className="flex-1 flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${remaining > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></span>
+                      <span className={`text-xs font-black ${remaining > 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                        {remaining > 0 ? `${remaining} seats remaining` : 'Full'}
+                      </span>
+                   </div>
+                   <button 
+                    onClick={() => handleBook(trip)}
+                    disabled={isBooked || isBooking || remaining <= 0}
+                    className={`px-6 py-3 rounded-2xl font-black text-sm shadow-xl active:scale-95 transition-all ${
+                      isBooked 
+                      ? 'bg-emerald-100 text-emerald-700 border-2 border-emerald-200' 
+                      : 'bg-black text-white hover:bg-slate-800'
+                    } disabled:opacity-70`}
+                   >
+                     {isBooking ? (
+                       <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                     ) : isBooked ? (
+                       'Booked ✓'
+                     ) : 'Book Seat'}
+                   </button>
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         ) : (
           <div className="bg-slate-50 border-2 border-dashed border-slate-200 p-12 rounded-[2rem] text-center space-y-4">
             <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto shadow-sm text-slate-300">

@@ -26,13 +26,11 @@ const App: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [profile, setProfile] = useState<DriverProfile | null>(null);
   
-  // Persisted trips state for the local demo
   const [allAvailableTrips, setAllAvailableTrips] = useState<Trip[]>([]);
   const [activeTrip, setActiveTrip] = useState<Trip | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
-  // Load initial data from localStorage
   useEffect(() => {
     const savedProfile = localStorage.getItem('rr_profile');
     const savedRole = localStorage.getItem('rr_role') as UserRole;
@@ -54,7 +52,6 @@ const App: React.FC = () => {
     if (savedTransactions) setTransactions(JSON.parse(savedTransactions));
   }, []);
 
-  // Persistence helpers
   const persistTrips = (trips: Trip[]) => {
     setAllAvailableTrips(trips);
     localStorage.setItem('rr_all_trips', JSON.stringify(trips));
@@ -79,7 +76,6 @@ const App: React.FC = () => {
   const handleLogout = () => {
     localStorage.removeItem('rr_profile');
     localStorage.removeItem('rr_role');
-    // Note: We don't remove rr_all_trips here because they are global to the platform
     setIsLoggedIn(false);
     setProfile(null);
     setUserRole(null);
@@ -87,6 +83,44 @@ const App: React.FC = () => {
     persistBookings([]);
     setTransactions([]);
     setCurrentPage('dashboard');
+  };
+
+  const handlePostTrip = (trip: Trip) => {
+    persistActiveTrip(trip);
+    const updatedTrips = [trip, ...allAvailableTrips];
+    persistTrips(updatedTrips);
+  };
+
+  const handleBookTrip = (trip: Trip) => {
+    // Create actual booking object
+    const newBooking: Booking = {
+      booking_id: 'b-' + Math.random().toString(36).substr(2, 5),
+      trip_id: trip.trip_id,
+      passenger_id: profile?.user_id || 'guest',
+      passenger_name: profile?.full_name || 'Anonymous Passenger',
+      passenger_photo: profile?.profile_photo_url || `https://picsum.photos/100/100?seed=${Math.random()}`,
+      passenger_rating: 5.0,
+      passenger_trips: 0,
+      seats_booked: 1,
+      amount_paid: ROUTES.SUGGESTED_PRICE_PER_SEAT,
+      status: BookingStatus.PENDING,
+      created_at: new Date().toISOString(),
+    };
+
+    // Update global trip list to reflect booking
+    const updatedTrips = allAvailableTrips.map(t => 
+      t.trip_id === trip.trip_id ? { ...t, seats_booked: t.seats_booked + 1 } : t
+    );
+    persistTrips(updatedTrips);
+
+    // If this is the active trip for the driver (simulation), update that too
+    if (activeTrip && activeTrip.trip_id === trip.trip_id) {
+      persistActiveTrip({ ...activeTrip, seats_booked: activeTrip.seats_booked + 1 });
+    }
+
+    // Add to bookings
+    const updatedBookings = [newBooking, ...bookings];
+    persistBookings(updatedBookings);
   };
 
   if (!isLoggedIn) {
@@ -104,25 +138,17 @@ const App: React.FC = () => {
     );
   }
 
-  const handlePostTrip = (trip: Trip) => {
-    persistActiveTrip(trip);
-    const updatedTrips = [trip, ...allAvailableTrips];
-    persistTrips(updatedTrips);
-  };
-
   const renderPage = () => {
     if (userRole === 'passenger') {
       switch (currentPage) {
         case 'search':
-          return <PassengerHome trips={allAvailableTrips} onBook={(trip) => {
-            alert(`Booking requested for ${trip.route}! (Demo: Driver will see this in their Bookings tab)`);
-          }} />;
+          return <PassengerHome trips={allAvailableTrips} onBook={handleBookTrip} />;
         case 'wallet':
           return <WalletView profile={profile!} transactions={transactions} userRole={userRole} />;
         case 'settings':
           return <SettingsView profile={profile!} onLogout={handleLogout} onUpdate={handleUpdateProfile} userRole={userRole} />;
         default:
-          return <PassengerHome trips={allAvailableTrips} onBook={() => {}} />;
+          return <PassengerHome trips={allAvailableTrips} onBook={handleBookTrip} />;
       }
     }
 
