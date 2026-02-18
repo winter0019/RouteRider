@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { DriverProfile } from '../types';
 import { ICONS, COLORS } from '../constants';
