@@ -1,175 +1,326 @@
+import React, { useState, useEffect } from "react";
+import {
+  TripStatus,
+  BookingStatus,
+  DriverProfile,
+  Trip,
+  Booking,
+  Transaction,
+} from "./types";
+import { ROUTES, ICONS, COLORS } from "./constants";
+import Dashboard from "./components/Dashboard";
+import TripPosting from "./components/TripPosting";
+import BookingManagement from "./components/BookingManagement";
+import WalletView from "./components/Wallet";
+import ProfileOnboarding from "./components/ProfileOnboarding";
+import SettingsView from "./components/Settings";
+import PassengerHome from "./components/PassengerHome";
 
-import React, { useState, useEffect } from 'react';
-import { 
-  TripStatus, 
-  BookingStatus, 
-  DriverProfile, 
-  Trip, 
-  Booking, 
-  Transaction 
-} from './types';
-import { ROUTES, ICONS, COLORS } from './constants';
-import Dashboard from './components/Dashboard';
-import TripPosting from './components/TripPosting';
-import BookingManagement from './components/BookingManagement';
-import WalletView from './components/Wallet';
-import ProfileOnboarding from './components/ProfileOnboarding';
-import SettingsView from './components/Settings';
-import PassengerHome from './components/PassengerHome';
+// ✅ NEW: API
+import {
+  getTrips,
+  searchTrips,
+  postTrip,
+  bookTrip,
+  getDriverBookings,
+  setBookingStatus,
+  completeTrip,
+} from "./services/api";
 
-type Page = 'dashboard' | 'post-trip' | 'bookings' | 'wallet' | 'settings' | 'search';
-type UserRole = 'driver' | 'passenger';
+type Page = "dashboard" | "post-trip" | "bookings" | "wallet" | "settings" | "search";
+type UserRole = "driver" | "passenger";
 
 const App: React.FC = () => {
-  const [currentPage, setCurrentPage] = useState<Page>('dashboard');
+  const [currentPage, setCurrentPage] = useState<Page>("dashboard");
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [profile, setProfile] = useState<DriverProfile | null>(null);
-  
+
+  // ✅ Now trips/bookings come from API (not localStorage)
   const [allAvailableTrips, setAllAvailableTrips] = useState<Trip[]>([]);
   const [activeTrip, setActiveTrip] = useState<Trip | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
+  const [isLoadingTrips, setIsLoadingTrips] = useState(false);
+  const [isLoadingBookings, setIsLoadingBookings] = useState(false);
+
+  // =========================
+  // BOOTSTRAP LOGIN STATE
+  // =========================
   useEffect(() => {
-    const savedProfile = localStorage.getItem('rr_profile');
-    const savedRole = localStorage.getItem('rr_role') as UserRole;
-    const savedTrips = localStorage.getItem('rr_all_trips');
-    const savedActiveTrip = localStorage.getItem('rr_active_trip');
-    const savedBookings = localStorage.getItem('rr_bookings');
-    const savedTransactions = localStorage.getItem('rr_transactions');
+    const savedProfile = localStorage.getItem("rr_profile");
+    const savedRole = localStorage.getItem("rr_role") as UserRole | null;
 
     if (savedProfile && savedRole) {
       setProfile(JSON.parse(savedProfile));
       setUserRole(savedRole);
       setIsLoggedIn(true);
-      if (savedRole === 'passenger') setCurrentPage('search');
+      if (savedRole === "passenger") setCurrentPage("search");
     }
-
-    if (savedTrips) setAllAvailableTrips(JSON.parse(savedTrips));
-    if (savedActiveTrip) setActiveTrip(JSON.parse(savedActiveTrip));
-    if (savedBookings) setBookings(JSON.parse(savedBookings));
-    if (savedTransactions) setTransactions(JSON.parse(savedTransactions));
   }, []);
 
-  const persistTrips = (trips: Trip[]) => {
-    setAllAvailableTrips(trips);
-    localStorage.setItem('rr_all_trips', JSON.stringify(trips));
+  // =========================
+  // LOAD TRIPS FROM API
+  // =========================
+  const refreshTrips = async () => {
+    setIsLoadingTrips(true);
+    try {
+      const data = await getTrips();
+      // backend returns: { trips: [...] }
+      setAllAvailableTrips(data.trips as any);
+    } catch (e: any) {
+      console.error(e);
+    } finally {
+      setIsLoadingTrips(false);
+    }
   };
 
-  const persistActiveTrip = (trip: Trip | null) => {
-    setActiveTrip(trip);
-    if (trip) localStorage.setItem('rr_active_trip', JSON.stringify(trip));
-    else localStorage.removeItem('rr_active_trip');
+  // Load trips when logged in
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    refreshTrips();
+  }, [isLoggedIn]);
+
+  // =========================
+  // LOAD DRIVER BOOKINGS FROM API
+  // =========================
+  const refreshDriverBookings = async () => {
+    if (!profile?.phone_number) return;
+    if (userRole !== "driver") return;
+
+    setIsLoadingBookings(true);
+    try {
+      const data = await getDriverBookings(profile.phone_number);
+      setActiveTrip((data.active_trip as any) || null);
+      setBookings((data.bookings as any) || []);
+    } catch (e: any) {
+      console.error(e);
+    } finally {
+      setIsLoadingBookings(false);
+    }
   };
 
-  const persistBookings = (newBookings: Booking[]) => {
-    setBookings(newBookings);
-    localStorage.setItem('rr_bookings', JSON.stringify(newBookings));
-  };
+  // When driver enters bookings page, refresh
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    if (userRole !== "driver") return;
+    if (currentPage !== "bookings") return;
 
+    refreshDriverBookings();
+  }, [isLoggedIn, userRole, currentPage]);
+
+  // =========================
+  // PROFILE / AUTH HELPERS
+  // =========================
   const handleUpdateProfile = (newProfile: DriverProfile) => {
     setProfile(newProfile);
-    localStorage.setItem('rr_profile', JSON.stringify(newProfile));
+    localStorage.setItem("rr_profile", JSON.stringify(newProfile));
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('rr_profile');
-    localStorage.removeItem('rr_role');
+    localStorage.removeItem("rr_profile");
+    localStorage.removeItem("rr_role");
     setIsLoggedIn(false);
     setProfile(null);
     setUserRole(null);
-    persistActiveTrip(null);
-    persistBookings([]);
+    setActiveTrip(null);
+    setBookings([]);
     setTransactions([]);
-    setCurrentPage('dashboard');
+    setCurrentPage("dashboard");
   };
 
-  const handlePostTrip = (trip: Trip) => {
-    persistActiveTrip(trip);
-    const updatedTrips = [trip, ...allAvailableTrips];
-    persistTrips(updatedTrips);
+  // =========================
+  // DRIVER: POST TRIP (API)
+  // TripPosting will call this
+  // =========================
+  const handlePostTrip = async (tripPayload: any) => {
+    // We accept the payload from TripPosting and send to API
+    // tripPayload should contain origin,destination,time,seats_total,price_per_seat...
+    if (!profile?.phone_number) throw new Error("Driver phone missing");
+
+    const driverName = profile.full_name || "Driver";
+
+    const res = await postTrip({
+      driverPhone: profile.phone_number,
+      driverName,
+      origin: tripPayload.origin,
+      destination: tripPayload.destination,
+      date: tripPayload.date, // optional
+      time: tripPayload.time, // optional
+      seats_total: tripPayload.seats_total,
+      price_per_seat: tripPayload.price_per_seat,
+    });
+
+    // backend returns { trip: {...} }
+    setActiveTrip(res.trip as any);
+
+    // refresh trips list
+    await refreshTrips();
   };
 
-  const handleBookTrip = (trip: Trip) => {
-    // Create actual booking object
-    const newBooking: Booking = {
-      booking_id: 'b-' + Math.random().toString(36).substr(2, 5),
-      trip_id: trip.trip_id,
-      passenger_id: profile?.user_id || 'guest',
-      passenger_name: profile?.full_name || 'Anonymous Passenger',
-      passenger_photo: profile?.profile_photo_url || `https://picsum.photos/100/100?seed=${Math.random()}`,
-      passenger_rating: 5.0,
-      passenger_trips: 0,
-      seats_booked: 1,
-      amount_paid: ROUTES.SUGGESTED_PRICE_PER_SEAT,
-      status: BookingStatus.PENDING,
-      created_at: new Date().toISOString(),
-    };
-
-    // Update global trip list to reflect booking
-    const updatedTrips = allAvailableTrips.map(t => 
-      t.trip_id === trip.trip_id ? { ...t, seats_booked: t.seats_booked + 1 } : t
-    );
-    persistTrips(updatedTrips);
-
-    // If this is the active trip for the driver (simulation), update that too
-    if (activeTrip && activeTrip.trip_id === trip.trip_id) {
-      persistActiveTrip({ ...activeTrip, seats_booked: activeTrip.seats_booked + 1 });
+  // =========================
+  // PASSENGER: SEARCH (API)
+  // PassengerHome can call this
+  // =========================
+  const handlePassengerSearch = async (params: {
+    origin: string;
+    destination: string;
+    date?: string;
+  }) => {
+    setIsLoadingTrips(true);
+    try {
+      const data = await searchTrips(params);
+      setAllAvailableTrips(data.trips as any);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoadingTrips(false);
     }
-
-    // Add to bookings
-    const updatedBookings = [newBooking, ...bookings];
-    persistBookings(updatedBookings);
   };
 
+  // =========================
+  // PASSENGER: BOOK TRIP (API)
+  // PassengerHome will call this
+  // =========================
+  const handleBookTrip = async (trip: any) => {
+    if (!profile?.phone_number) throw new Error("Passenger phone missing");
+
+    await bookTrip({
+      tripId: trip.id, // backend trip id
+      passengerPhone: profile.phone_number,
+      passengerName: profile.full_name || "Passenger",
+      seats: 1,
+    });
+
+    // refresh trips so seats update
+    await refreshTrips();
+  };
+
+  // =========================
+  // DRIVER: ACCEPT / REJECT BOOKING (API)
+  // BookingManagement can call this
+  // =========================
+  const handleSetBookingStatus = async (booking_id: number, status: "confirmed" | "cancelled") => {
+    await setBookingStatus({ booking_id, status });
+    await refreshDriverBookings();
+  };
+
+  // =========================
+  // DRIVER: COMPLETE TRIP (API)
+  // BookingManagement can call this
+  // =========================
+  const handleCompleteTrip = async (tripId: number) => {
+    if (!profile?.phone_number) throw new Error("Driver phone missing");
+    await completeTrip({ driverPhone: profile.phone_number, trip_id: tripId });
+    await refreshDriverBookings();
+    await refreshTrips();
+  };
+
+  // =========================
+  // NOT LOGGED IN UI
+  // =========================
   if (!isLoggedIn) {
     return (
-      <ProfileOnboarding 
+      <ProfileOnboarding
         onComplete={(p, role) => {
           setProfile(p);
           setUserRole(role);
           setIsLoggedIn(true);
-          localStorage.setItem('rr_profile', JSON.stringify(p));
-          localStorage.setItem('rr_role', role);
-          if (role === 'passenger') setCurrentPage('search');
-        }} 
+          localStorage.setItem("rr_profile", JSON.stringify(p));
+          localStorage.setItem("rr_role", role);
+          if (role === "passenger") setCurrentPage("search");
+        }}
       />
     );
   }
 
+  // =========================
+  // RENDER PAGES
+  // =========================
   const renderPage = () => {
-    if (userRole === 'passenger') {
+    if (userRole === "passenger") {
       switch (currentPage) {
-        case 'search':
-          return <PassengerHome trips={allAvailableTrips} onBook={handleBookTrip} />;
-        case 'wallet':
+        case "search":
+          return (
+            <PassengerHome
+              trips={allAvailableTrips}
+              onBook={handleBookTrip}
+              onSearch={handlePassengerSearch}
+              isLoading={isLoadingTrips}
+            />
+          );
+        case "wallet":
           return <WalletView profile={profile!} transactions={transactions} userRole={userRole} />;
-        case 'settings':
-          return <SettingsView profile={profile!} onLogout={handleLogout} onUpdate={handleUpdateProfile} userRole={userRole} />;
+        case "settings":
+          return (
+            <SettingsView
+              profile={profile!}
+              onLogout={handleLogout}
+              onUpdate={handleUpdateProfile}
+              userRole={userRole}
+            />
+          );
         default:
-          return <PassengerHome trips={allAvailableTrips} onBook={handleBookTrip} />;
+          return (
+            <PassengerHome
+              trips={allAvailableTrips}
+              onBook={handleBookTrip}
+              onSearch={handlePassengerSearch}
+              isLoading={isLoadingTrips}
+            />
+          );
       }
     }
 
+    // DRIVER
     switch (currentPage) {
-      case 'dashboard':
-        return <Dashboard profile={profile!} activeTrip={activeTrip} bookings={bookings} onNavigate={setCurrentPage} />;
-      case 'post-trip':
-        return <TripPosting onPost={handlePostTrip} activeTrip={activeTrip} onNavigate={setCurrentPage} />;
-      case 'bookings':
-        return <BookingManagement 
-          bookings={bookings} 
-          setBookings={persistBookings} 
-          activeTrip={activeTrip} 
-          setActiveTrip={persistActiveTrip} 
-          setTransactions={setTransactions} 
-          setProfile={setProfile} 
-        />;
-      case 'wallet':
+      case "dashboard":
+        return (
+          <Dashboard
+            profile={profile!}
+            activeTrip={activeTrip}
+            bookings={bookings}
+            onNavigate={setCurrentPage}
+          />
+        );
+
+      case "post-trip":
+        return (
+          <TripPosting
+            // ✅ Updated: TripPosting should call onPost(payload) not onPost(tripObj)
+            onPost={handlePostTrip}
+            activeTrip={activeTrip}
+            onNavigate={setCurrentPage}
+          />
+        );
+
+      case "bookings":
+        return (
+          <BookingManagement
+            // ✅ These are now API-backed
+            bookings={bookings}
+            activeTrip={activeTrip}
+            isLoading={isLoadingBookings}
+            onRefresh={refreshDriverBookings}
+            onSetBookingStatus={handleSetBookingStatus}
+            onCompleteTrip={handleCompleteTrip}
+          />
+        );
+
+      case "wallet":
         return <WalletView profile={profile!} transactions={transactions} userRole={userRole!} />;
-      case 'settings':
-        return <SettingsView profile={profile!} onLogout={handleLogout} onUpdate={handleUpdateProfile} userRole={userRole!} />;
+
+      case "settings":
+        return (
+          <SettingsView
+            profile={profile!}
+            onLogout={handleLogout}
+            onUpdate={handleUpdateProfile}
+            userRole={userRole!}
+          />
+        );
+
       default:
         return null;
     }
@@ -178,33 +329,84 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col min-h-screen max-w-md mx-auto bg-white shadow-xl relative overflow-hidden text-black font-bold">
       <header className="px-4 py-4 flex items-center justify-between border-b sticky top-0 bg-white z-10">
-        <button onClick={() => setCurrentPage(userRole === 'passenger' ? 'search' : 'dashboard')} className="flex items-center gap-2">
-          <div className={`w-8 h-8 ${COLORS.primary} rounded-full flex items-center justify-center text-white font-black`}>R</div>
+        <button
+          onClick={() => setCurrentPage(userRole === "passenger" ? "search" : "dashboard")}
+          className="flex items-center gap-2"
+        >
+          <div className={`w-8 h-8 ${COLORS.primary} rounded-full flex items-center justify-center text-white font-black`}>
+            R
+          </div>
           <h1 className="font-black text-xl">RouteRider</h1>
         </button>
+
         <div className="flex items-center gap-3">
-          <div className="text-[10px] font-black uppercase text-gray-400 bg-slate-100 px-2 py-1 rounded-md">{userRole}</div>
-          <button onClick={() => setCurrentPage('settings')} className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden border-2 border-emerald-50 shadow-sm">
-            <img src={profile?.profile_photo_url || `https://picsum.photos/100/100?seed=${profile?.user_id}`} alt="Me" className="w-full h-full object-cover" />
+          <div className="text-[10px] font-black uppercase text-gray-400 bg-slate-100 px-2 py-1 rounded-md">
+            {userRole}
+          </div>
+          <button
+            onClick={() => setCurrentPage("settings")}
+            className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden border-2 border-emerald-50 shadow-sm"
+          >
+            <img
+              src={profile?.profile_photo_url || `https://picsum.photos/100/100?seed=${profile?.user_id}`}
+              alt="Me"
+              className="w-full h-full object-cover"
+            />
           </button>
         </div>
       </header>
-      
+
       <main className="flex-1 overflow-y-auto pb-24 p-4">{renderPage()}</main>
 
       <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t px-6 py-3 flex justify-between items-center z-20 shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
-        {userRole === 'driver' ? (
+        {userRole === "driver" ? (
           <>
-            <NavItem active={currentPage === 'dashboard'} onClick={() => setCurrentPage('dashboard')} icon={ICONS.Dashboard} label="Home" />
-            <NavItem active={currentPage === 'post-trip'} onClick={() => setCurrentPage('post-trip')} icon={ICONS.Post} label="Post" />
-            <NavItem active={currentPage === 'bookings'} onClick={() => setCurrentPage('bookings')} icon={ICONS.Notification} label="Bookings" badge={bookings.filter(b => b.status === BookingStatus.PENDING).length} />
-            <NavItem active={currentPage === 'wallet'} onClick={() => setCurrentPage('wallet')} icon={ICONS.Wallet} label="Wallet" />
+            <NavItem
+              active={currentPage === "dashboard"}
+              onClick={() => setCurrentPage("dashboard")}
+              icon={ICONS.Dashboard}
+              label="Home"
+            />
+            <NavItem
+              active={currentPage === "post-trip"}
+              onClick={() => setCurrentPage("post-trip")}
+              icon={ICONS.Post}
+              label="Post"
+            />
+            <NavItem
+              active={currentPage === "bookings"}
+              onClick={() => setCurrentPage("bookings")}
+              icon={ICONS.Notification}
+              label="Bookings"
+              badge={bookings.filter((b: any) => b.status === BookingStatus.PENDING || b.status === "pending").length}
+            />
+            <NavItem
+              active={currentPage === "wallet"}
+              onClick={() => setCurrentPage("wallet")}
+              icon={ICONS.Wallet}
+              label="Wallet"
+            />
           </>
         ) : (
           <>
-            <NavItem active={currentPage === 'search'} onClick={() => setCurrentPage('search')} icon={ICONS.Car} label="Find Rides" />
-            <NavItem active={currentPage === 'wallet'} onClick={() => setCurrentPage('wallet')} icon={ICONS.Wallet} label="My Trips" />
-            <NavItem active={currentPage === 'settings'} onClick={() => setCurrentPage('settings')} icon={ICONS.User} label="Profile" />
+            <NavItem
+              active={currentPage === "search"}
+              onClick={() => setCurrentPage("search")}
+              icon={ICONS.Car}
+              label="Find Rides"
+            />
+            <NavItem
+              active={currentPage === "wallet"}
+              onClick={() => setCurrentPage("wallet")}
+              icon={ICONS.Wallet}
+              label="My Trips"
+            />
+            <NavItem
+              active={currentPage === "settings"}
+              onClick={() => setCurrentPage("settings")}
+              icon={ICONS.User}
+              label="Profile"
+            />
           </>
         )}
       </nav>
@@ -212,11 +414,26 @@ const App: React.FC = () => {
   );
 };
 
-const NavItem: React.FC<{ active: boolean, onClick: () => void, icon: React.ReactNode, label: string, badge?: number }> = ({ active, onClick, icon, label, badge }) => (
-  <button onClick={onClick} className={`flex flex-col items-center gap-1 relative transition-all ${active ? 'text-emerald-700 scale-110' : 'text-gray-500'}`}>
+const NavItem: React.FC<{
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  badge?: number;
+}> = ({ active, onClick, icon, label, badge }) => (
+  <button
+    onClick={onClick}
+    className={`flex flex-col items-center gap-1 relative transition-all ${
+      active ? "text-emerald-700 scale-110" : "text-gray-500"
+    }`}
+  >
     <div className="relative">
       {icon}
-      {badge && badge > 0 ? <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-black">{badge}</span> : null}
+      {badge && badge > 0 ? (
+        <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-black">
+          {badge}
+        </span>
+      ) : null}
     </div>
     <span className="text-[10px] font-black">{label}</span>
   </button>
