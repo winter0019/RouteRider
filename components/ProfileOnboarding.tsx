@@ -1,10 +1,9 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { DriverProfile } from '../types';
 import { COLORS, ICONS } from '../constants';
 import { verifyDocument } from '../services/geminiService';
-import { auth, isFirebaseConfigured } from '../services/firebase';
-import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
+import PhoneVerification from './PhoneVerification';
 
 interface ProfileOnboardingProps {
   onComplete: (profile: DriverProfile, role: 'driver' | 'passenger') => void;
@@ -12,86 +11,18 @@ interface ProfileOnboardingProps {
 
 const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => {
   const [role, setRole] = useState<'driver' | 'passenger' | null>(null);
-  const [step, setStep] = useState(-1); // -1: Role, 0: Phone, 1: OTP, 2: Info, 3: NIN, 4: Car
+  const [step, setStep] = useState(-1); // -1: Role, 0: Phone/OTP, 1: Info, 2: NIN, 3: Car
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState<{ verified: boolean; message: string } | null>(null);
-  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
     full_name: '',
     phone: '',
-    otp: '',
     car_make: '',
     car_model: '',
     plate_number: '',
     nin_image: '',
   });
-
-  const recaptchaVerifier = useRef<RecaptchaVerifier | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (recaptchaVerifier.current) {
-        recaptchaVerifier.current.clear();
-      }
-    };
-  }, []);
-
-  const setupRecaptcha = () => {
-    if (!recaptchaVerifier.current) {
-      recaptchaVerifier.current = new RecaptchaVerifier(auth, 'recaptcha-container', {
-        size: 'invisible',
-        callback: () => {
-          // reCAPTCHA solved, allow signInWithPhoneNumber.
-        }
-      });
-    }
-  };
-
-  const handleSendOTP = async () => {
-    if (!isFirebaseConfigured() || !auth) {
-      setError('Firebase is not configured. Please add your API keys to the environment variables.');
-      return;
-    }
-    try {
-      setError(null);
-      setIsVerifying(true);
-      setupRecaptcha();
-      
-      const phoneNumber = formData.phone.startsWith('+') ? formData.phone : `+234${formData.phone}`;
-      const confirmation = await signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifier.current!);
-      setConfirmationResult(confirmation);
-      setStep(1);
-    } catch (err: any) {
-      console.error('Firebase Auth Error:', err);
-      if (err.code === 'auth/invalid-api-key') {
-        setError('Invalid Firebase API Key. Please check your configuration.');
-      } else if (err.code === 'auth/network-request-failed') {
-        setError(`Network error. Please ensure "${window.location.hostname}" is added to "Authorized Domains" in your Firebase Console (Authentication > Settings).`);
-      } else {
-        setError(err.message || 'Failed to send OTP. Please check the phone number.');
-      }
-    } finally {
-      setIsVerifying(false);
-    }
-  };
-
-  const handleVerifyOTP = async () => {
-    try {
-      setError(null);
-      setIsVerifying(true);
-      if (confirmationResult) {
-        await confirmationResult.confirm(formData.otp);
-        setStep(2);
-      }
-    } catch (err: any) {
-      console.error(err);
-      setError('Invalid OTP. Please try again.');
-    } finally {
-      setIsVerifying(false);
-    }
-  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -139,20 +70,12 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
         <div className="w-full bg-slate-100 h-2">
           <div 
             className="h-full bg-emerald-600 transition-all duration-500" 
-            style={{ width: `${((step + 1) / 6) * 100}%` }} 
+            style={{ width: `${((step + 1) / 5) * 100}%` }} 
           />
         </div>
       )}
 
-      <div id="recaptcha-container"></div>
-
       <div className="flex-1 p-8 space-y-8 overflow-y-auto">
-        {error && (
-          <div className="p-4 bg-red-50 border-2 border-red-100 rounded-2xl text-red-700 text-sm font-bold flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
-            {ICONS.Alert}
-            {error}
-          </div>
-        )}
         {step === -1 && (
           <div className="space-y-8 animate-in slide-in-from-bottom-4 flex flex-col items-center justify-center min-h-[70vh]">
             <header className="text-center space-y-4">
@@ -188,68 +111,16 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
         )}
 
         {step === 0 && (
-          <div className="space-y-8 animate-in slide-in-from-right-4">
-             <header className="text-center space-y-2">
-               <h2 className="text-3xl font-black">Enter Phone</h2>
-               <p className="text-gray-500 font-bold">Sign up with your Nigerian phone number.</p>
-             </header>
-             <div className="space-y-4">
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-gray-400">+234</span>
-                  <input 
-                    type="tel" 
-                    placeholder="902 874 3008" 
-                    value={formData.phone}
-                    onChange={e => setFormData({...formData, phone: e.target.value})} 
-                    className="w-full p-5 pl-16 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-lg outline-none" 
-                  />
-                </div>
-                <button 
-                  onClick={handleSendOTP} 
-                  disabled={!formData.phone || isVerifying} 
-                  className="w-full bg-emerald-600 text-white p-5 rounded-2xl font-black text-xl shadow-xl shadow-emerald-200 disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {isVerifying && <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
-                  Send OTP
-                </button>
-             </div>
-          </div>
+          <PhoneVerification 
+            onVerified={(phone) => {
+              setFormData({ ...formData, phone });
+              setStep(1);
+            }} 
+            onBack={() => setStep(-1)}
+          />
         )}
 
         {step === 1 && (
-          <div className="space-y-8 animate-in slide-in-from-right-4">
-             <header className="text-center space-y-2">
-               <h2 className="text-3xl font-black">Verify OTP</h2>
-               <p className="text-gray-500 font-bold">Enter the 6-digit code sent to your phone.</p>
-             </header>
-             <div className="space-y-4">
-                <input 
-                  type="text" 
-                  maxLength={6}
-                  placeholder="123456" 
-                  value={formData.otp}
-                  onChange={e => setFormData({...formData, otp: e.target.value})} 
-                  className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-center text-3xl tracking-[0.5em] outline-none" 
-                />
-                <button 
-                  onClick={handleVerifyOTP} 
-                  disabled={formData.otp.length !== 6 || isVerifying} 
-                  className="w-full bg-emerald-600 text-white p-5 rounded-2xl font-black text-xl shadow-xl shadow-emerald-200 disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {isVerifying && <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
-                  Verify & Continue
-                </button>
-                <button 
-                  onClick={() => setStep(0)} 
-                  className="w-full text-emerald-600 font-black text-sm uppercase tracking-wider"
-                >
-                  Change Phone Number
-                </button>
-             </div>
-          </div>
-        )}
-
-        {step === 2 && (
           <div className="space-y-8 animate-in slide-in-from-right-4">
              <header className="text-center space-y-2">
                <h2 className="text-3xl font-black text-black">Basic Info</h2>
@@ -265,7 +136,7 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
                 <button 
                   onClick={() => {
                     if (role === 'passenger') handleSubmit();
-                    else setStep(3);
+                    else setStep(2);
                   }} 
                   disabled={!formData.full_name}
                   className="w-full bg-emerald-600 text-white p-5 rounded-2xl font-black text-xl shadow-xl shadow-emerald-200 disabled:opacity-50"
@@ -276,7 +147,7 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
           </div>
         )}
 
-        {step === 3 && role === 'driver' && (
+        {step === 2 && role === 'driver' && (
           <div className="space-y-8 animate-in slide-in-from-right-4">
             <header className="space-y-2 text-center">
               <h2 className="text-3xl font-black">NIN Verification</h2>
@@ -338,7 +209,7 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
                 </button>
 
                 <button 
-                  onClick={() => setStep(4)}
+                  onClick={() => setStep(3)}
                   disabled={!verificationResult?.verified || isVerifying}
                   className="w-full bg-emerald-600 text-white p-5 rounded-2xl font-black text-xl shadow-xl shadow-emerald-200 disabled:opacity-30 transition-all"
                 >
@@ -349,7 +220,7 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
           </div>
         )}
 
-        {step === 4 && role === 'driver' && (
+        {step === 3 && role === 'driver' && (
           <div className="space-y-8 animate-in slide-in-from-right-4">
             <header className="space-y-2">
               <h2 className="text-3xl font-black">Car Details</h2>
