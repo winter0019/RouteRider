@@ -1,301 +1,356 @@
+import React, { useState, useRef } from "react";
+import { DriverProfile } from "../types";
+import { COLORS, ICONS } from "../constants";
+import { verifyDocument } from "../services/geminiService";
+import AuthVerification from "./AuthVerification";
 
-"").trim();
-
-    const seats_available = safeNum(data.seats_available, safeNum(data.seats_total, 0));
-    const seats_booked = safeNum(data.seats_booked, 0);
-
-    return {
-      trip_id: d.id,
-      driver_id: data.carOwnerId ?? data.driver_id ?? "",
-      carOwnerId: data.carOwnerId ?? "",
-      origin,
-      destination,
-      route: data.route ?? `${origin} → ${destination}`,
-      departure_time: toISODateTime(data.departure_time ?? data.time),
-
-      seats_available,
-      seats_booked,
-
-      price_per_seat: safeNum(data.price_per_seat, 0),
-
-      // ✅ vehicle info (fix mismatch)
-      vehicle_name: data.vehicle_name ?? "",
-      plate_number: data.plate_number ?? "",
-
-      status: (data.status as TripStatus) ?? TripStatus.POSTED,
-      earnings: safeNum(data.earnings, 0),
-      created_at: toISODateTime(data.createdAt),
-      bookedBy: Array.isArray(data.bookedBy) ? data.bookedBy : [],
-    } satisfies Trip;
-  });
+interface ProfileOnboardingProps {
+  onComplete: (profile: DriverProfile, role: "driver" | "passenger") => void;
 }
 
-export async function postTrip(input: {
-  origin: string;
-  destination: string;
-  departure_time: string; // ISO
-  seats_available: number;
-  price_per_seat?: number;
+const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => {
+  const [role, setRole] = useState<"driver" | "passenger" | null>(null);
+  const [step, setStep] = useState(-1); // -1: Role, 0: Phone/OTP, 1: Info, 2: NIN, 3: Car
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verificationResult, setVerificationResult] = useState<{ verified: boolean; message: string } | null>(null);
 
-  // ✅ pass vehicle info from driver profile
-  vehicle_name?: string;
-  plate_number?: string;
-}): Promise<{ ok: boolean; trip: Trip }> {
-  const user = requireAuth();
-  const _db = requireDb();
+  // ✅ add vehicle_name
+  const [formData, setFormData] = useState({
+    full_name: "",
+    email: "",
+    phone: "",
 
-  const origin = String(input.origin ?? "").trim();
-  const destination = String(input.destination ?? "").trim();
+    // car
+    car_make: "",
+    car_model: "",
+    vehicle_name: "", // ✅ new (e.g. "Honda Accord")
+    plate_number: "",
 
-  if (!origin || !destination) throw new Error("Origin and destination are required");
-  if (!input.departure_time) throw new Error("departure_time is required");
+    // id
+    nin_image: "",
+  });
 
-  const seats_available = safeNum(input.seats_available, 0);
-  if (seats_available <= 0) throw new Error("seats_available must be > 0");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const rideDoc: any = {
-    carOwnerId: user.uid,
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    origin,
-    destination,
-    route: `${origin} → ${destination}`,
-    departure_time: input.departure_time,
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64String = reader.result as string;
 
-    seats_available,
-    seats_booked: 0,
+      setFormData((prev) => ({ ...prev, nin_image: base64String }));
+      setIsVerifying(true);
 
-    price_per_seat: safeNum(input.price_per_seat, 0),
-
-    // ✅ vehicle info
-    vehicle_name: String(input.vehicle_name ?? "").trim(),
-    plate_number: String(input.plate_number ?? "").trim(),
-
-    status: TripStatus.POSTED,
-    earnings: 0,
-    createdAt: Timestamp.now(),
+      try {
+        const result = await verifyDocument(base64String, "nin");
+        setVerificationResult(result);
+      } catch (err) {
+        setVerificationResult({
+          verified: false,
+          message: "Verification failed. Please try again.",
+        });
+      } finally {
+        setIsVerifying(false);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
-  const ref = await addDoc(collection(_db, "rides"), rideDoc);
+  const buildVehicleName = () => {
+    // priority: vehicle_name input, else make+model
+    const direct = String(formData.vehicle_name || "").trim();
+    if (direct) return direct;
 
-  const trip: Trip = {
-    trip_id: ref.id,
-    driver_id: user.uid,
-    carOwnerId: user.uid,
-    origin,
-    destination,
-    route: rideDoc.route,
-    departure_time: rideDoc.departure_time,
-    seats_available,
-    seats_booked: 0,
-    price_per_seat: rideDoc.price_per_seat,
-    vehicle_name: rideDoc.vehicle_name,
-    plate_number: rideDoc.plate_number,
-    status: TripStatus.POSTED,
-    earnings: 0,
-    created_at: new Date().toISOString(),
+    const make = String(formData.car_make || "").trim();
+    const model = String(formData.car_model || "").trim();
+    const joined = `${make} ${model}`.trim();
+    return joined || "N/A";
   };
 
-  return { ok: true, trip };
-}
+  const handleSubmit = () => {
+    const vehicle_name = buildVehicleName();
+    const plate = String(formData.plate_number || "").trim() || "N/A";
 
-export async function completeTrip(params: { tripId: string }) {
-  const user = requireAuth();
-  const _db = requireDb();
+    onComplete(
+      {
+        user_id: "u-" + Math.random().toString(36).substr(2, 5),
+        full_name: formData.full_name,
+        phone_number: formData.phone || "N/A",
 
-  const rideRef = doc(_db, "rides", params.tripId);
-  const rideSnap = await getDoc(rideRef);
-  if (!rideSnap.exists()) throw new Error("Trip not found");
+        // keep original fields (if your types use them)
+        car_make: formData.car_make || "N/A",
+        car_model: formData.car_model || "N/A",
+        car_color: "Standard",
+        plate_number: plate,
 
-  const data = rideSnap.data() as any;
-  if (data.carOwnerId !== user.uid) throw new Error("Only the driver can complete this trip");
+        // ✅ add this (must exist in types.ts)
+        vehicle_name,
 
-  await updateDoc(rideRef, {
-    status: TripStatus.COMPLETED,
-    completedAt: Timestamp.now(),
-  });
+        verification_status: {
+          phone: true,
+          id: verificationResult?.verified || false,
+          first_trip: false,
+        },
 
-  return { ok: true };
-}
+        rating: 5.0,
+        trip_count: 0,
+        wallet_balance: 0,
+        total_earnings: 0,
+      },
+      role!
+    );
+  };
 
-/* =========================
-   BOOKINGS
-========================= */
+  return (
+    <div className="max-w-md mx-auto min-h-screen bg-white flex flex-col text-black">
+      {step >= 0 && (
+        <div className="w-full bg-slate-100 h-2">
+          <div
+            className="h-full bg-emerald-600 transition-all duration-500"
+            style={{ width: `${((step + 1) / 5) * 100}%` }}
+          />
+        </div>
+      )}
 
-export async function getTripBookings(tripId: string): Promise<{ ok: boolean; bookings: Booking[] }> {
-  const _db = requireDb();
+      <div className="flex-1 p-8 space-y-8 overflow-y-auto">
+        {/* STEP -1: ROLE */}
+        {step === -1 && (
+          <div className="space-y-8 animate-in slide-in-from-bottom-4 flex flex-col items-center justify-center min-h-[70vh]">
+            <header className="text-center space-y-4">
+              <div className="mx-auto w-20 h-20 bg-emerald-100 text-emerald-600 rounded-3xl flex items-center justify-center font-black text-4xl shadow-lg border-2 border-emerald-50">
+                R
+              </div>
+              <h2 className="text-3xl font-black tracking-tight">Welcome to RouteRider</h2>
+              <p className="text-gray-500 font-bold px-4">The easiest way to commute between Daura and Katsina.</p>
+            </header>
 
-  const bookingsRef = collection(_db, "rides", tripId, "bookings");
-  const q = query(bookingsRef, orderBy("createdAt", "desc"));
-  const snap = await getDocs(q);
+            <div className="w-full space-y-4">
+              <button
+                onClick={() => {
+                  setRole("driver");
+                  setStep(0);
+                }}
+                className="w-full p-6 bg-white border-2 border-slate-100 rounded-3xl flex items-center gap-4 hover:border-emerald-500 transition-all text-left group"
+              >
+                <div className="p-4 bg-emerald-50 text-emerald-600 rounded-2xl group-hover:scale-110 transition-all">
+                  {ICONS.Car}
+                </div>
+                <div>
+                  <h3 className="font-black text-lg">I am a Driver</h3>
+                  <p className="text-xs text-gray-400 font-bold uppercase tracking-tight">Fill seats & offset fuel</p>
+                </div>
+              </button>
 
-  const bookings: Booking[] = snap.docs.map((d) => {
-    const data = d.data() as any;
+              <button
+                onClick={() => {
+                  setRole("passenger");
+                  setStep(0);
+                }}
+                className="w-full p-6 bg-white border-2 border-slate-100 rounded-3xl flex items-center gap-4 hover:border-emerald-500 transition-all text-left group"
+              >
+                <div className="p-4 bg-amber-50 text-amber-600 rounded-2xl group-hover:scale-110 transition-all">
+                  {ICONS.User}
+                </div>
+                <div>
+                  <h3 className="font-black text-lg">I am a Passenger</h3>
+                  <p className="text-xs text-gray-400 font-bold uppercase tracking-tight">Find affordable rides</p>
+                </div>
+              </button>
+            </div>
+          </div>
+        )}
 
-    return {
-      id: undefined,
-      booking_id: d.id,
-      trip_id: tripId,
+        {/* STEP 0: AUTH */}
+        {step === 0 && (
+          <AuthVerification
+            onVerified={(identifier) => {
+              if (identifier.includes("@")) {
+                setFormData((prev) => ({ ...prev, email: identifier }));
+              } else {
+                setFormData((prev) => ({ ...prev, phone: identifier }));
+              }
+              setStep(1);
+            }}
+            onBack={() => setStep(-1)}
+          />
+        )}
 
-      passenger_id: data.passenger_id ?? "",
-      passenger_phone: data.passenger_phone ?? "",
-      passenger_name: data.passenger_name ?? "",
-      passenger_photo: data.passenger_photo ?? "",
-      passenger_rating: safeNum(data.passenger_rating, 0),
-      passenger_trips: safeNum(data.passenger_trips, 0),
+        {/* STEP 1: BASIC INFO */}
+        {step === 1 && (
+          <div className="space-y-8 animate-in slide-in-from-right-4">
+            <header className="text-center space-y-2">
+              <h2 className="text-3xl font-black text-black">Basic Info</h2>
+              <p className="text-gray-500 font-bold">What should we call you?</p>
+            </header>
 
-      seats: safeNum(data.seats, 1),
-      amount_paid: safeNum(data.amount_paid, 0),
-      status: (data.status as BookingStatus) ?? BookingStatus.PENDING,
-      created_at: toISODateTime(data.createdAt),
-    };
-  });
+            <div className="space-y-4">
+              <input
+                placeholder="Full Name"
+                value={formData.full_name}
+                onChange={(e) => setFormData((prev) => ({ ...prev, full_name: e.target.value }))}
+                className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-lg outline-none focus:border-emerald-500 transition-all"
+              />
 
-  return { ok: true, bookings };
-}
+              <input
+                placeholder="Email Address"
+                value={formData.email}
+                onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
+                className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-lg outline-none focus:border-emerald-500 transition-all"
+              />
 
-/**
- * Passenger books seats:
- * - Creates booking doc under rides/{tripId}/bookings
- * - In a transaction: checks remaining seats, increments seats_booked
- */
-export async function bookTrip(params: {
-  tripId: string;
-  seats?: number;
+              <input
+                placeholder="Phone Number (Optional)"
+                value={formData.phone}
+                onChange={(e) => setFormData((prev) => ({ ...prev, phone: e.target.value }))}
+                className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-lg outline-none focus:border-emerald-500 transition-all"
+              />
 
-  // passenger details (optional but recommended)
-  passenger_phone?: string;
-  passenger_name?: string;
-  passenger_photo?: string;
-}): Promise<{ ok: boolean; booking: Booking }> {
-  const user = requireAuth();
-  const _db = requireDb();
+              <button
+                onClick={() => {
+                  if (role === "passenger") handleSubmit();
+                  else setStep(2);
+                }}
+                disabled={!formData.full_name}
+                className="w-full bg-emerald-600 text-white p-5 rounded-2xl font-black text-xl shadow-xl shadow-emerald-200 disabled:opacity-50"
+              >
+                {role === "passenger" ? "Finish Signup" : "Next: Identity Verification"}
+              </button>
+            </div>
+          </div>
+        )}
 
-  const seats = Math.max(1, safeNum(params.seats, 1));
+        {/* STEP 2: NIN */}
+        {step === 2 && role === "driver" && (
+          <div className="space-y-8 animate-in slide-in-from-right-4">
+            <header className="space-y-2 text-center">
+              <h2 className="text-3xl font-black">NIN Verification</h2>
+              <p className="text-gray-500 font-bold">Upload your NIN slip/card for verification.</p>
+            </header>
 
-  const rideRef = doc(_db, "rides", params.tripId);
-  const bookingRef = doc(collection(_db, "rides", params.tripId, "bookings"));
+            <div className="space-y-6">
+              <div
+                className={`relative w-full aspect-video border-4 border-dashed rounded-3xl flex flex-col items-center justify-center overflow-hidden transition-all ${
+                  formData.nin_image ? "border-emerald-500 bg-emerald-50" : "border-slate-200 bg-slate-50"
+                }`}
+              >
+                {formData.nin_image ? (
+                  <img src={formData.nin_image} className="w-full h-full object-cover" alt="NIN Preview" />
+                ) : (
+                  <div className="text-center space-y-2 text-slate-400">
+                    <div className="flex justify-center">{ICONS.User}</div>
+                    <p className="font-black text-xs uppercase tracking-widest">Snap or Upload NIN</p>
+                  </div>
+                )}
 
-  const result = await runTransaction(_db, async (tx) => {
-    const rideSnap = await tx.get(rideRef);
-    if (!rideSnap.exists()) throw new Error("Trip not found");
+                {isVerifying && (
+                  <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center space-y-3 p-6 text-center">
+                    <div className="w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+                    <p className="font-black text-emerald-800 animate-pulse">Analyzing document...</p>
+                  </div>
+                )}
+              </div>
 
-    const ride = rideSnap.data() as any;
+              {verificationResult && (
+                <div
+                  className={`p-4 rounded-2xl flex items-start gap-3 border-2 ${
+                    verificationResult.verified
+                      ? "bg-emerald-50 border-emerald-100 text-emerald-700"
+                      : "bg-red-50 border-red-100 text-red-700"
+                  }`}
+                >
+                  <div className="mt-0.5">{verificationResult.verified ? ICONS.Check : ICONS.Alert}</div>
+                  <div>
+                    <p className="font-black text-sm uppercase tracking-tight">
+                      {verificationResult.verified ? "Verified Successfully" : "Verification Failed"}
+                    </p>
+                    <p className="text-xs font-bold leading-relaxed">{verificationResult.message}</p>
+                  </div>
+                </div>
+              )}
 
-    const seats_available = safeNum(ride.seats_available, 0);
-    const seats_booked = safeNum(ride.seats_booked, 0);
-    const remaining = seats_available - seats_booked;
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                ref={fileInputRef}
+                className="hidden"
+                onChange={handleFileUpload}
+              />
 
-    if (remaining < seats) throw new Error("Not enough seats remaining");
+              <div className="space-y-3">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isVerifying}
+                  className="w-full bg-slate-900 text-white p-5 rounded-2xl font-black flex items-center justify-center gap-3 disabled:opacity-50"
+                >
+                  {formData.nin_image ? "Retake Photo" : "Capture NIN Card"}
+                </button>
 
-    // update trip seats
-    tx.update(rideRef, {
-      seats_booked: seats_booked + seats,
-    });
+                <button
+                  onClick={() => setStep(3)}
+                  disabled={!verificationResult?.verified || isVerifying}
+                  className="w-full bg-emerald-600 text-white p-5 rounded-2xl font-black text-xl shadow-xl shadow-emerald-200 disabled:opacity-30 transition-all"
+                >
+                  Proceed to Car Details
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
-    // create booking doc
-    const bookingData: any = {
-      passenger_id: user.uid,
-      passenger_phone: params.passenger_phone ?? "",
-      passenger_name: params.passenger_name ?? "",
-      passenger_photo: params.passenger_photo ?? "",
+        {/* STEP 3: CAR */}
+        {step === 3 && role === "driver" && (
+          <div className="space-y-8 animate-in slide-in-from-right-4">
+            <header className="space-y-2">
+              <h2 className="text-3xl font-black">Car Details</h2>
+              <p className="text-gray-500 font-bold">Passengers will see these details.</p>
+            </header>
 
-      seats,
-      amount_paid: safeNum(ride.price_per_seat, 0) * seats,
-      status: BookingStatus.PENDING,
-      createdAt: Timestamp.now(),
-    };
+            <div className="space-y-4">
+              <input
+                placeholder="Make (e.g. Honda)"
+                value={formData.car_make}
+                onChange={(e) => setFormData((prev) => ({ ...prev, car_make: e.target.value }))}
+                className="w-full p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black focus:border-emerald-500 outline-none"
+              />
 
-    tx.set(bookingRef, bookingData);
+              <input
+                placeholder="Model (e.g. Accord)"
+                value={formData.car_model}
+                onChange={(e) => setFormData((prev) => ({ ...prev, car_model: e.target.value }))}
+                className="w-full p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black focus:border-emerald-500 outline-none"
+              />
 
-    const booking: Booking = {
-      booking_id: bookingRef.id,
-      trip_id: params.tripId,
-      passenger_id: user.uid,
-      passenger_phone: bookingData.passenger_phone,
-      passenger_name: bookingData.passenger_name,
-      passenger_photo: bookingData.passenger_photo,
-      seats,
-      amount_paid: bookingData.amount_paid,
-      status: BookingStatus.PENDING,
-      created_at: new Date().toISOString(),
-    };
+              {/* ✅ optional direct vehicle name (covers edge cases) */}
+              <input
+                placeholder="Vehicle Name (optional, e.g. Honda Accord)"
+                value={formData.vehicle_name}
+                onChange={(e) => setFormData((prev) => ({ ...prev, vehicle_name: e.target.value }))}
+                className="w-full p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black focus:border-emerald-500 outline-none"
+              />
 
-    return booking;
-  });
+              <input
+                placeholder="License Plate (e.g. FGE-123-TC)"
+                value={formData.plate_number}
+                onChange={(e) => setFormData((prev) => ({ ...prev, plate_number: e.target.value }))}
+                className="w-full p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black focus:border-emerald-500 outline-none"
+              />
 
-  return { ok: true, booking: result };
-}
-
-/**
- * Driver accepts/rejects a booking.
- * NOTE: We do NOT change seats here because seats were already reserved at booking time.
- */
-export async function updateBookingStatus(params: {
-  tripId: string;
-  bookingId: string;
-  status: BookingStatus;
-}) {
-  const user = requireAuth();
-  const _db = requireDb();
-
-  const rideRef = doc(_db, "rides", params.tripId);
-  const rideSnap = await getDoc(rideRef);
-  if (!rideSnap.exists()) throw new Error("Trip not found");
-  const ride = rideSnap.data() as any;
-
-  if (ride.carOwnerId !== user.uid) throw new Error("Only the driver can manage bookings");
-
-  const bookingRef = doc(_db, "rides", params.tripId, "bookings", params.bookingId);
-  await updateDoc(bookingRef, { status: params.status });
-
-  return { ok: true };
-}
-
-/**
- * Passenger cancels:
- * - Sets booking status CANCELLED
- * - Decrements trip seats_booked in a transaction
- */
-export async function cancelBooking(params: { tripId: string; bookingId: string }) {
-  const user = requireAuth();
-  const _db = requireDb();
-
-  const rideRef = doc(_db, "rides", params.tripId);
-  const bookingRef = doc(_db, "rides", params.tripId, "bookings", params.bookingId);
-
-  await runTransaction(_db, async (tx) => {
-    const bookingSnap = await tx.get(bookingRef);
-    if (!bookingSnap.exists()) throw new Error("Booking not found");
-
-    const booking = bookingSnap.data() as any;
-    if (booking.passenger_id !== user.uid) throw new Error("You can only cancel your own booking");
-
-    const rideSnap = await tx.get(rideRef);
-    if (!rideSnap.exists()) throw new Error("Trip not found");
-
-    const ride = rideSnap.data() as any;
-
-    const seats = safeNum(booking.seats, 1);
-    const currentBooked = safeNum(ride.seats_booked, 0);
-
-    tx.update(bookingRef, { status: BookingStatus.CANCELLED });
-    tx.update(rideRef, { seats_booked: Math.max(0, currentBooked - seats) });
-  });
-
-  return { ok: true };
-}
-
-/* =========================
-   BACKWARD COMPAT (optional)
-   For older code: import { api } from "../services/api"
-========================= */
-
-export const api = {
-  getTrips,
-  postTrip,
-  bookTrip,
-  cancelBooking,
-  getTripBookings,
-  updateBookingStatus,
-  completeTrip,
+              <button
+                onClick={handleSubmit}
+                disabled={!formData.plate_number}
+                className="w-full bg-emerald-600 text-white p-5 rounded-2xl font-black text-xl shadow-xl shadow-emerald-600/20 active:scale-[0.98] transition-all disabled:opacity-50"
+              >
+                Finish Driver Signup
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 };
+
+export default ProfileOnboarding;
