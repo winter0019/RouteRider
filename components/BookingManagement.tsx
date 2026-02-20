@@ -1,10 +1,16 @@
-import React, { useMemo, useState } from "react";
-import { Booking, BookingStatus, Trip, TripStatus, DriverProfile, Transaction } from "../types";
+import React, { useMemo, useState, useEffect } from "react";
+import {
+  Booking,
+  BookingStatus,
+  Trip,
+  TripStatus,
+  DriverProfile,
+  Transaction,
+} from "../types";
 import { ICONS, ROUTES } from "../constants";
 
-// IMPORTANT: Your api.ts exports functions, not `api` object.
-// Example: import { updateBookingStatus, completeTrip as apiCompleteTrip } from "../services/api";
-import { updateBookingStatus, completeTrip as apiCompleteTrip, getTripBookings } from "../services/api";
+// ✅ Use your Firestore api object (recommended)
+import { api } from "../services/api";
 
 interface BookingManagementProps {
   bookings: Booking[];
@@ -28,11 +34,25 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
   const [viewingBooking, setViewingBooking] = useState<Booking | null>(null);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
 
-  // Derived lists
+  // ✅ Refresh bookings from backend whenever activeTrip changes
+  useEffect(() => {
+    const run = async () => {
+      if (!activeTrip) return;
+      try {
+        const list = await api.getTripBookings(activeTrip.trip_id);
+        setBookings(list);
+      } catch (e) {
+        console.error("Failed to load trip bookings:", e);
+      }
+    };
+    run();
+  }, [activeTrip?.trip_id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const pendingBookings = useMemo(
     () => bookings.filter((b) => b.status === BookingStatus.PENDING),
     [bookings]
   );
+
   const acceptedBookings = useMemo(
     () => bookings.filter((b) => b.status === BookingStatus.ACCEPTED),
     [bookings]
@@ -40,52 +60,49 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
 
   const seatsRemaining = useMemo(() => {
     if (!activeTrip) return 0;
-    const total = Number(activeTrip.seats_total ?? 0);
+    const total = Number(activeTrip.seats_available ?? 0);
     const booked = Number(activeTrip.seats_booked ?? 0);
     return Math.max(0, total - booked);
   }, [activeTrip]);
 
-  // OPTIONAL: if you want to refresh bookings from backend
   const refreshTripBookings = async () => {
     if (!activeTrip) return;
     try {
-      const res = await getTripBookings(activeTrip.id);
-      if (res?.ok) setBookings(res.bookings);
+      const list = await api.getTripBookings(activeTrip.trip_id);
+      setBookings(list);
     } catch (e) {
       console.error("Failed to refresh bookings:", e);
     }
   };
 
-  const handleAction = async (bookingId: number, action: "accept" | "reject") => {
-    const nextStatus = action === "accept" ? BookingStatus.ACCEPTED : BookingStatus.REJECTED;
+  const handleAction = async (bookingId: string, action: "accept" | "reject") => {
+    if (!activeTrip) return;
+
+    const nextStatus =
+      action === "accept" ? BookingStatus.ACCEPTED : BookingStatus.REJECTED;
 
     setLoadingAction(`${action}-${bookingId}`);
-    try {
-      // Update backend
-      await updateBookingStatus({ bookingId, status: nextStatus });
 
-      // Update local list
-      const updated = bookings.map((b) => (b.id === bookingId ? { ...b, status: nextStatus } : b));
+    try {
+      await api.updateBookingStatus({
+        tripId: activeTrip.trip_id,
+        bookingId,
+        status: nextStatus,
+      });
+
+      // local update (fast UI)
+      const updated = bookings.map((b) =>
+        b.booking_id === bookingId ? { ...b, status: nextStatus } : b
+      );
       setBookings(updated);
 
-      // Update active trip state locally (no seats_total change here; seats_booked should update from backend if you want)
-      if (activeTrip && action === "accept") {
-        const total = Number(activeTrip.seats_total ?? 0);
-        const booked = Number(activeTrip.seats_booked ?? 0);
-
-        setActiveTrip({
-          ...activeTrip,
-          status: booked >= total ? TripStatus.IN_PROGRESS : TripStatus.POSTED,
-        });
-      }
+      // refresh to keep seats_booked accurate
+      await refreshTripBookings();
 
       setViewingBooking(null);
-
-      // If your backend updates seats_booked when booking is accepted, refresh to stay accurate:
-      await refreshTripBookings();
     } catch (error) {
       console.error("Failed to update booking status:", error);
-      alert("Failed to update booking. Check backend logs.");
+      alert("Failed to update booking. Check backend/Firestore rules.");
     } finally {
       setLoadingAction(null);
     }
@@ -95,36 +112,22 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
     if (!activeTrip) return;
 
     setLoadingAction("complete-trip");
+
     try {
-      // Tell backend to complete trip and calculate earnings if you have that logic there
-      // If your backend doesn't yet have this endpoint, we can add it.
-      const res = await apiCompleteTrip({ tripId: activeTrip.id });
+      // OPTIONAL: if you create a completeTrip() endpoint in api.ts
+      // await api.completeTrip({ tripId: activeTrip.trip_id });
 
-      // Option A: backend returns earnings + updated driver wallet
-      if (res?.ok && res?.tx) {
-        setTransactions((prev) => [res.tx, ...prev]);
-      }
-
-      if (res?.ok && res?.profileUpdate) {
-        setProfile((prev) => (prev ? { ...prev, ...res.profileUpdate } : prev));
-      }
-
-      // Clear UI
-      setActiveTrip(null);
-      setBookings([]);
-    } catch (e) {
-      console.error("Failed to complete trip:", e);
-
-      // Option B: fallback local-only earnings (if backend not ready)
-      const totalRevenue = Number(activeTrip.seats_booked ?? 0) * ROUTES.SUGGESTED_PRICE_PER_SEAT;
+      // ✅ Local-only fallback earnings
+      const totalRevenue =
+        Number(activeTrip.seats_booked ?? 0) * ROUTES.SUGGESTED_PRICE_PER_SEAT;
       const netEarnings = totalRevenue - ROUTES.COMMISSION_PER_TRIP;
 
       const newTx: Transaction = {
         transaction_id: "tx-" + Math.random().toString(36).slice(2, 8),
-        user_id: Number((activeTrip as any).driver_user_id ?? 0),
+        user_id: activeTrip.driver_id,
         type: "deposit",
         amount: netEarnings,
-        description: `Earnings from trip #${activeTrip.id}`,
+        description: `Earnings from trip ${activeTrip.trip_id}`,
         created_at: new Date().toISOString(),
       };
 
@@ -140,8 +143,12 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
           : prev
       );
 
+      // clear UI
       setActiveTrip(null);
       setBookings([]);
+    } catch (e) {
+      console.error("Failed to complete trip:", e);
+      alert("Failed to complete trip.");
     } finally {
       setLoadingAction(null);
     }
@@ -152,7 +159,9 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
       <header className="flex justify-between items-end">
         <div>
           <h2 className="text-2xl font-bold">Bookings</h2>
-          <p className="text-slate-500 text-sm font-medium">Review passenger requests</p>
+          <p className="text-slate-500 text-sm font-medium">
+            Review passenger requests
+          </p>
         </div>
 
         {activeTrip && Number(activeTrip.seats_booked ?? 0) > 0 && (
@@ -171,10 +180,11 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
         <div className="bg-white border-2 border-slate-100 rounded-2xl p-4 flex items-center justify-between">
           <div>
             <div className="font-bold">
-              {activeTrip.origin} → {activeTrip.destination}
+              {activeTrip.route || `${activeTrip.origin} → ${activeTrip.destination}`}
             </div>
             <div className="text-xs text-slate-500 font-bold">
-              Seats: {activeTrip.seats_booked}/{activeTrip.seats_total} • Remaining: {seatsRemaining}
+              Seats: {activeTrip.seats_booked}/{activeTrip.seats_available} • Remaining:{" "}
+              {seatsRemaining}
             </div>
           </div>
           <span className="text-[10px] px-2 py-1 rounded-full bg-slate-100 font-black uppercase text-slate-500">
@@ -196,25 +206,25 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
         {pendingBookings.length > 0 ? (
           pendingBookings.map((booking) => (
             <div
-              key={booking.id}
+              key={booking.booking_id}
               className="bg-white border-2 border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm"
             >
               <div className="flex items-center gap-3">
                 <img
-                  src={(booking as any).passenger_photo || `https://picsum.photos/100/100?seed=${booking.id}`}
+                  src={
+                    booking.passenger_photo ||
+                    `https://picsum.photos/100/100?seed=${booking.booking_id}`
+                  }
                   className="w-12 h-12 rounded-full border-2 border-emerald-50"
                   alt="Passenger"
                 />
                 <div>
                   <div className="font-bold text-slate-900">
-                    {(booking as any).passenger_name || "Passenger"}
-                  </div>
-                  <div className="text-xs text-slate-500 font-bold flex items-center gap-1">
-                    {ICONS.Star} {(booking as any).passenger_rating ?? "—"} •{" "}
-                    {(booking as any).passenger_trips ?? 0} trips
+                    {booking.passenger_name || "Passenger"}
                   </div>
                   <div className="text-[11px] font-black text-emerald-700 mt-1">
-                    {booking.seats} seat(s) • ₦{Number(booking.amount_paid).toLocaleString()}
+                    {booking.seats} seat(s) • ₦
+                    {Number(booking.amount_paid).toLocaleString()}
                   </div>
                 </div>
               </div>
@@ -234,7 +244,7 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
         )}
       </section>
 
-      {/* Confirmed Passengers */}
+      {/* Confirmed */}
       <section className="space-y-4">
         <h3 className="font-bold text-sm text-slate-400 uppercase tracking-widest">
           Confirmed ({acceptedBookings.length})
@@ -243,18 +253,21 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
         <div className="space-y-3">
           {acceptedBookings.map((booking) => (
             <div
-              key={booking.id}
+              key={booking.booking_id}
               className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex items-center justify-between"
             >
               <div className="flex items-center gap-3">
                 <img
-                  src={(booking as any).passenger_photo || `https://picsum.photos/100/100?seed=ok-${booking.id}`}
+                  src={
+                    booking.passenger_photo ||
+                    `https://picsum.photos/100/100?seed=ok-${booking.booking_id}`
+                  }
                   className="w-10 h-10 rounded-full grayscale opacity-70"
                   alt="Passenger"
                 />
                 <div>
                   <div className="font-bold text-slate-700">
-                    {(booking as any).passenger_name || "Passenger"}
+                    {booking.passenger_name || "Passenger"}
                   </div>
                   <div className="text-xs text-emerald-600 font-bold flex items-center gap-1">
                     {ICONS.Check} ₦{Number(booking.amount_paid).toLocaleString()} Secured
@@ -268,7 +281,6 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
             </div>
           ))}
 
-          {/* Empty seats UI */}
           {activeTrip &&
             Array.from({ length: Math.max(0, seatsRemaining) }).map((_, i) => (
               <div
@@ -281,61 +293,57 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
         </div>
       </section>
 
-      {/* Passenger Modal */}
+      {/* Modal */}
       {viewingBooking && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl">
             <div className="p-6 text-center space-y-4">
               <img
-                src={(viewingBooking as any).passenger_photo || `https://picsum.photos/200/200?seed=modal-${viewingBooking.id}`}
+                src={
+                  viewingBooking.passenger_photo ||
+                  `https://picsum.photos/200/200?seed=modal-${viewingBooking.booking_id}`
+                }
                 className="w-24 h-24 rounded-full mx-auto border-4 border-emerald-50"
                 alt="Passenger"
               />
 
-              <div>
-                <h3 className="text-xl font-bold text-slate-900">
-                  {(viewingBooking as any).passenger_name || "Passenger"}
-                </h3>
-
-                <div className="flex items-center justify-center gap-2 mt-1">
-                  <div className="flex items-center gap-1 text-amber-500 font-bold">
-                    {ICONS.Star} {(viewingBooking as any).passenger_rating ?? "—"}
-                  </div>
-                  <span className="text-slate-300">|</span>
-                  <div className="text-slate-500 text-sm font-bold">
-                    {(viewingBooking as any).passenger_trips ?? 0} trips completed
-                  </div>
-                </div>
-              </div>
+              <h3 className="text-xl font-bold text-slate-900">
+                {viewingBooking.passenger_name || "Passenger"}
+              </h3>
 
               <div className="grid grid-cols-2 gap-2 py-4">
                 <div className="bg-emerald-50 p-3 rounded-2xl text-center">
-                  <p className="text-[10px] text-emerald-600 uppercase font-bold tracking-tight">Payment</p>
+                  <p className="text-[10px] text-emerald-600 uppercase font-bold tracking-tight">
+                    Payment
+                  </p>
                   <div className="text-emerald-700 font-bold">
                     ₦{Number(viewingBooking.amount_paid).toLocaleString()}
                   </div>
                 </div>
+
                 <div className="bg-blue-50 p-3 rounded-2xl text-center">
-                  <p className="text-[10px] text-blue-600 uppercase font-bold tracking-tight">Seats</p>
+                  <p className="text-[10px] text-blue-600 uppercase font-bold tracking-tight">
+                    Seats
+                  </p>
                   <div className="text-blue-700 font-bold">{viewingBooking.seats}</div>
                 </div>
               </div>
 
               <div className="flex flex-col gap-2 pt-2">
                 <button
-                  onClick={() => handleAction(viewingBooking.id, "accept")}
-                  disabled={loadingAction === `accept-${viewingBooking.id}`}
-                  className="w-full bg-emerald-600 text-white p-4 rounded-2xl font-bold shadow-lg shadow-emerald-200 disabled:opacity-60"
+                  onClick={() => handleAction(viewingBooking.booking_id, "accept")}
+                  disabled={loadingAction === `accept-${viewingBooking.booking_id}`}
+                  className="w-full bg-emerald-600 text-white p-4 rounded-2xl font-bold disabled:opacity-60"
                 >
-                  {loadingAction === `accept-${viewingBooking.id}` ? "Accepting..." : "Accept Passenger"}
+                  {loadingAction === `accept-${viewingBooking.booking_id}` ? "Accepting..." : "Accept Passenger"}
                 </button>
 
                 <button
-                  onClick={() => handleAction(viewingBooking.id, "reject")}
-                  disabled={loadingAction === `reject-${viewingBooking.id}`}
+                  onClick={() => handleAction(viewingBooking.booking_id, "reject")}
+                  disabled={loadingAction === `reject-${viewingBooking.booking_id}`}
                   className="w-full bg-white text-red-500 p-4 rounded-2xl font-bold disabled:opacity-60"
                 >
-                  {loadingAction === `reject-${viewingBooking.id}` ? "Rejecting..." : "Reject"}
+                  {loadingAction === `reject-${viewingBooking.booking_id}` ? "Rejecting..." : "Reject"}
                 </button>
 
                 <button
