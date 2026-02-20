@@ -64,9 +64,11 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
       setConfirmationResult(confirmation);
       setStep(1);
     } catch (err: any) {
-      console.error(err);
+      console.error('Firebase Auth Error:', err);
       if (err.code === 'auth/invalid-api-key') {
         setError('Invalid Firebase API Key. Please check your configuration.');
+      } else if (err.code === 'auth/network-request-failed') {
+        setError(`Network error. Please ensure "${window.location.hostname}" is added to "Authorized Domains" in your Firebase Console (Authentication > Settings).`);
       } else {
         setError(err.message || 'Failed to send OTP. Please check the phone number.');
       }
