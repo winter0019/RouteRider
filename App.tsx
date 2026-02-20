@@ -16,6 +16,9 @@ import WalletView from './components/Wallet';
 import ProfileOnboarding from './components/ProfileOnboarding';
 import SettingsView from './components/Settings';
 import PassengerHome from './components/PassengerHome';
+import { api } from './services/api';
+import { firestoreService } from './services/firestoreService';
+import { auth } from './services/firebase';
 
 type Page = 'dashboard' | 'post-trip' | 'bookings' | 'wallet' | 'settings' | 'search';
 type UserRole = 'driver' | 'passenger';
@@ -50,6 +53,17 @@ const App: React.FC = () => {
     if (savedActiveTrip) setActiveTrip(JSON.parse(savedActiveTrip));
     if (savedBookings) setBookings(JSON.parse(savedBookings));
     if (savedTransactions) setTransactions(JSON.parse(savedTransactions));
+
+    // Sync with backend
+    const syncData = async () => {
+      try {
+        const backendTrips = await api.getTrips().catch(() => []);
+        if (backendTrips.length > 0) persistTrips(backendTrips);
+      } catch (error) {
+        console.error('Initial sync failed:', error);
+      }
+    };
+    syncData();
   }, []);
 
   const persistTrips = (trips: Trip[]) => {
@@ -85,44 +99,69 @@ const App: React.FC = () => {
     setCurrentPage('dashboard');
   };
 
-  const handlePostTrip = (trip: Trip) => {
-    persistActiveTrip(trip);
-    const updatedTrips = [trip, ...allAvailableTrips];
-    persistTrips(updatedTrips);
+  const handlePostTrip = async (trip: Trip) => {
+    try {
+      const savedTrip = await api.postTrip(trip);
+      persistActiveTrip(savedTrip);
+      const updatedTrips = [savedTrip, ...allAvailableTrips];
+      persistTrips(updatedTrips);
+    } catch (error) {
+      console.error('Failed to post trip to backend:', error);
+      // Fallback to local
+      persistActiveTrip(trip);
+      const updatedTrips = [trip, ...allAvailableTrips];
+      persistTrips(updatedTrips);
+    }
   };
 
-  const handleBookTrip = (trip: Trip) => {
-    const newBooking: Booking = {
-      booking_id: 'b-' + Math.random().toString(36).substr(2, 5),
-      trip_id: trip.trip_id,
-      passenger_id: profile?.user_id || 'guest',
-      passenger_name: profile?.full_name || 'Anonymous Passenger',
-      passenger_photo: profile?.profile_photo_url || `https://picsum.photos/100/100?seed=${Math.random()}`,
-      passenger_rating: 5.0,
-      passenger_trips: 0,
-      seats_booked: 1,
-      amount_paid: ROUTES.SUGGESTED_PRICE_PER_SEAT,
-      status: BookingStatus.PENDING,
-      created_at: new Date().toISOString(),
-    };
+  const handleBookTrip = async (trip: Trip) => {
+    try {
+      await api.bookTrip(trip.trip_id);
+      
+      const updatedTrips = allAvailableTrips.map(t => 
+        t.trip_id === trip.trip_id ? { ...t, seats_booked: t.seats_booked + 1, bookedBy: [...(t.bookedBy || []), auth?.currentUser?.uid || ''] } : t
+      );
+      persistTrips(updatedTrips);
 
-    const updatedTrips = allAvailableTrips.map(t => 
-      t.trip_id === trip.trip_id ? { ...t, seats_booked: t.seats_booked + 1 } : t
-    );
-    persistTrips(updatedTrips);
+      if (activeTrip && activeTrip.trip_id === trip.trip_id) {
+        persistActiveTrip({ ...activeTrip, seats_booked: activeTrip.seats_booked + 1, bookedBy: [...(activeTrip.bookedBy || []), auth?.currentUser?.uid || ''] });
+      }
 
-    if (activeTrip && activeTrip.trip_id === trip.trip_id) {
-      persistActiveTrip({ ...activeTrip, seats_booked: activeTrip.seats_booked + 1 });
+      // Since we don't have a separate bookings collection in the provided rules,
+      // we'll just update the local state to reflect the booking.
+      const mockBooking: Booking = {
+        booking_id: 'b-' + Math.random().toString(36).substr(2, 5),
+        trip_id: trip.trip_id,
+        passenger_id: auth?.currentUser?.uid || 'guest',
+        passenger_name: profile?.full_name || 'Anonymous',
+        passenger_rating: 5.0,
+        passenger_trips: 0,
+        seats_booked: 1,
+        amount_paid: ROUTES.SUGGESTED_PRICE_PER_SEAT,
+        status: BookingStatus.ACCEPTED, // Auto-accepted in this simplified model
+        created_at: new Date().toISOString(),
+      };
+      persistBookings([mockBooking, ...bookings]);
+    } catch (error) {
+      console.error('Failed to book trip on Firestore:', error);
+      throw error;
     }
-
-    const updatedBookings = [newBooking, ...bookings];
-    persistBookings(updatedBookings);
   };
 
   if (!isLoggedIn) {
     return (
       <ProfileOnboarding 
-        onComplete={(p, role) => {
+        onComplete={async (p, role) => {
+          if (auth?.currentUser) {
+            try {
+              await firestoreService.createUserProfile(auth.currentUser.uid, {
+                ...p,
+                userType: role
+              });
+            } catch (error) {
+              console.error('Firestore Error (createUserProfile):', error);
+            }
+          }
           setProfile(p);
           setUserRole(role);
           setIsLoggedIn(true);

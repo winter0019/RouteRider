@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { Booking, BookingStatus, Trip, TripStatus, DriverProfile, Transaction } from '../types';
 import { ICONS, COLORS, ROUTES } from '../constants';
+import { api } from '../services/api';
 
 interface BookingManagementProps {
   bookings: Booking[];
@@ -40,26 +41,34 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
     }
   }, [activeTrip, bookings.length, setBookings]);
 
-  const handleAction = (bookingId: string, action: 'accept' | 'reject') => {
-    const updatedBookings = bookings.map(b => 
-      b.booking_id === bookingId 
-      ? { ...b, status: action === 'accept' ? BookingStatus.ACCEPTED : BookingStatus.REJECTED }
-      : b
-    );
-    setBookings(updatedBookings);
-
-    if (action === 'accept' && activeTrip) {
-      // Find the specific booking to see how many seats were taken
-      const b = bookings.find(x => x.booking_id === bookingId);
-      const seats = b ? b.seats_booked : 1;
+  const handleAction = async (bookingId: string, action: 'accept' | 'reject') => {
+    const status = action === 'accept' ? BookingStatus.ACCEPTED : BookingStatus.REJECTED;
+    
+    try {
+      await api.updateBookingStatus(bookingId, status);
       
-      const newBookedCount = activeTrip.seats_booked; // seats_booked was already incremented on initial request for better visual feedback
-      // Actually, in handleBookTrip in App.tsx we already incremented it.
-      // So here we just transition the status if full.
-      setActiveTrip({
-        ...activeTrip,
-        status: (activeTrip.seats_booked) === activeTrip.seats_available ? TripStatus.IN_PROGRESS : TripStatus.POSTED
-      });
+      const updatedBookings = bookings.map(b => 
+        b.booking_id === bookingId 
+        ? { ...b, status }
+        : b
+      );
+      setBookings(updatedBookings);
+
+      if (action === 'accept' && activeTrip) {
+        setActiveTrip({
+          ...activeTrip,
+          status: (activeTrip.seats_booked) === activeTrip.seats_available ? TripStatus.IN_PROGRESS : TripStatus.POSTED
+        });
+      }
+    } catch (error) {
+      console.error('Failed to update booking status on backend:', error);
+      // Fallback to local update if API fails (optional, maybe show error instead)
+      const updatedBookings = bookings.map(b => 
+        b.booking_id === bookingId 
+        ? { ...b, status }
+        : b
+      );
+      setBookings(updatedBookings);
     }
     setViewingPassenger(null);
   };

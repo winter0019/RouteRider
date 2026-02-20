@@ -12,19 +12,25 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [originQuery, setOriginQuery] = useState('');
   const [destQuery, setDestQuery] = useState('');
+  const [dateQuery, setDateQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [bookingTripId, setBookingTripId] = useState<string | null>(null);
   const [bookedTripIds, setBookedTripIds] = useState<Set<string>>(new Set());
+  const [bookingError, setBookingError] = useState<string | null>(null);
 
-  const [appliedFilters, setAppliedFilters] = useState({ origin: '', dest: '' });
+  const [appliedFilters, setAppliedFilters] = useState({ origin: '', dest: '', date: '' });
 
   const filteredTrips = useMemo(() => {
     return trips.filter(trip => {
       const [origin, destination] = trip.route.split('→').map(s => s.trim().toLowerCase());
       const matchesOrigin = appliedFilters.origin === '' || origin.includes(appliedFilters.origin.toLowerCase());
       const matchesDest = appliedFilters.dest === '' || destination.includes(appliedFilters.dest.toLowerCase());
-      return matchesOrigin && matchesDest;
+      
+      const tripDate = new Date(trip.departure_time).toISOString().split('T')[0];
+      const matchesDate = appliedFilters.date === '' || tripDate === appliedFilters.date;
+      
+      return matchesOrigin && matchesDest && matchesDate;
     });
   }, [trips, appliedFilters]);
 
@@ -38,7 +44,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
   const handleSearch = () => {
     setIsSearching(true);
     setTimeout(() => {
-      setAppliedFilters({ origin: originQuery, dest: destQuery });
+      setAppliedFilters({ origin: originQuery, dest: destQuery, date: dateQuery });
       setIsSearching(false);
     }, 400);
   };
@@ -46,21 +52,25 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
   const handleReset = () => {
     setOriginQuery('');
     setDestQuery('');
-    setAppliedFilters({ origin: '', dest: '' });
+    setDateQuery('');
+    setAppliedFilters({ origin: '', dest: '', date: '' });
   };
 
-  const confirmBooking = (trip: Trip) => {
+  const confirmBooking = async (trip: Trip) => {
     if (trip.seats_available <= trip.seats_booked) return;
     
     setBookingTripId(trip.trip_id);
     setSelectedTrip(null);
+    setBookingError(null);
     
-    // Simulate API call
-    setTimeout(() => {
-      onBook(trip);
-      setBookingTripId(null);
+    try {
+      await onBook(trip);
       setBookedTripIds(prev => new Set(prev).add(trip.trip_id));
-    }, 1200);
+    } catch (error) {
+      setBookingError('Booking failed');
+    } finally {
+      setBookingTripId(null);
+    }
   };
 
   if (isInitialLoad) {
@@ -78,6 +88,12 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
         <h2 className="text-3xl font-black tracking-tight">Find a Ride</h2>
         <p className="text-gray-500 font-bold text-sm">Real-time trips from verified car owners.</p>
       </header>
+
+      {bookingError && (
+        <div className="bg-red-50 border border-red-100 p-4 rounded-2xl text-red-600 font-bold animate-in fade-in slide-in-from-top-2">
+          {bookingError}
+        </div>
+      )}
 
       {/* Search Section */}
       <section className="bg-white border-2 border-slate-100 p-5 rounded-[2rem] shadow-sm space-y-4">
@@ -104,6 +120,14 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
                value={destQuery}
                onChange={(e) => setDestQuery(e.target.value)}
                className="w-full pl-11 pr-4 py-4 bg-slate-50 border-2 border-transparent focus:border-emerald-500 rounded-2xl font-black text-sm outline-none transition-all"
+             />
+          </div>
+          <div className="relative">
+             <input 
+               type="date" 
+               value={dateQuery}
+               onChange={(e) => setDateQuery(e.target.value)}
+               className="w-full px-4 py-4 bg-slate-50 border-2 border-transparent focus:border-emerald-500 rounded-2xl font-black text-sm outline-none transition-all"
              />
           </div>
         </div>
@@ -191,8 +215,8 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
                         {remaining > 0 ? `${remaining} seats remaining` : 'Full'}
                       </span>
                    </div>
-                   <div className={`px-4 py-2 rounded-xl font-black text-xs ${isBooked ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                     {isBooking ? '...' : isBooked ? 'Booked ✓' : 'View Details'}
+                   <div className={`px-4 py-2 rounded-xl font-black text-xs ${isBooked ? 'bg-emerald-100 text-emerald-700' : 'bg-black text-white'}`}>
+                     {isBooking ? '...' : isBooked ? 'Booked ✓' : 'Book Seat'}
                    </div>
                 </div>
               </div>

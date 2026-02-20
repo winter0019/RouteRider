@@ -15,11 +15,12 @@ import {
   LogOut,
   Bell,
   Star,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Info
 } from 'lucide-react';
 
 export const ROUTES = {
-  SUGGESTED_PRICE_PER_SEAT: 2500,
+  SUGGESTED_PRICE_PER_SEAT: 3500,
   COMMISSION_PER_TRIP: 1000,
   NO_SHOW_COMPENSATION: 2000
 };
@@ -47,4 +48,5 @@ export const ICONS = {
   Notification: <Bell size={20} />,
   Star: <Star size={16} fill="currentColor" />,
   Swap: <ArrowRightLeft size={18} />,
+  Info: <Info size={16} />,
 };

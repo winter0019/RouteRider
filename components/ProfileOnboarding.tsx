@@ -3,7 +3,7 @@ import React, { useState, useRef } from 'react';
 import { DriverProfile } from '../types';
 import { COLORS, ICONS } from '../constants';
 import { verifyDocument } from '../services/geminiService';
-import PhoneVerification from './PhoneVerification';
+import AuthVerification from './AuthVerification';
 
 interface ProfileOnboardingProps {
   onComplete: (profile: DriverProfile, role: 'driver' | 'passenger') => void;
@@ -17,6 +17,7 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
   
   const [formData, setFormData] = useState({
     full_name: '',
+    email: '',
     phone: '',
     car_make: '',
     car_model: '',
@@ -47,7 +48,7 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
     onComplete({
       user_id: 'u-' + Math.random().toString(36).substr(2, 5),
       full_name: formData.full_name,
-      phone_number: formData.phone,
+      phone_number: formData.phone || 'N/A',
       car_make: formData.car_make || 'N/A',
       car_model: formData.car_model || 'N/A',
       car_color: 'Standard',
@@ -111,9 +112,13 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
         )}
 
         {step === 0 && (
-          <PhoneVerification 
-            onVerified={(phone) => {
-              setFormData({ ...formData, phone });
+          <AuthVerification 
+            onVerified={(identifier) => {
+              if (identifier.includes('@')) {
+                setFormData({ ...formData, email: identifier });
+              } else {
+                setFormData({ ...formData, phone: identifier });
+              }
               setStep(1);
             }} 
             onBack={() => setStep(-1)}
@@ -131,7 +136,19 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
                   placeholder="Full Name" 
                   value={formData.full_name}
                   onChange={e => setFormData({...formData, full_name: e.target.value})} 
-                  className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-lg outline-none" 
+                  className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-lg outline-none focus:border-emerald-500 transition-all" 
+                />
+                <input 
+                  placeholder="Email Address" 
+                  value={formData.email}
+                  onChange={e => setFormData({...formData, email: e.target.value})} 
+                  className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-lg outline-none focus:border-emerald-500 transition-all" 
+                />
+                <input 
+                  placeholder="Phone Number (Optional)" 
+                  value={formData.phone}
+                  onChange={e => setFormData({...formData, phone: e.target.value})} 
+                  className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-lg outline-none focus:border-emerald-500 transition-all" 
                 />
                 <button 
                   onClick={() => {

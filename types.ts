@@ -40,6 +40,11 @@ export interface DriverProfile extends User {
 export interface Trip {
   trip_id: string;
   driver_id: string;
+  carOwnerId?: string; // For Firestore compatibility
+  origin?: string;
+  destination?: string;
+  time?: string;
+  bookedBy?: string[];
   route: string;
   departure_time: string;
   seats_available: number;
