@@ -28,6 +28,7 @@ const App: React.FC = () => {
   const [userRole, setUserRole] = useState<UserRole | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [profile, setProfile] = useState<DriverProfile | null>(null);
+  const [globalError, setGlobalError] = useState<string | null>(null);
 
   const [allAvailableTrips, setAllAvailableTrips] = useState<Trip[]>([]);
   const [activeTrip, setActiveTrip] = useState<Trip | null>(null);
@@ -70,8 +71,12 @@ const App: React.FC = () => {
     try {
       const backendTrips = await api.getTrips();
       persistTrips(backendTrips);
-    } catch (error) {
+      setGlobalError(null);
+    } catch (error: any) {
       console.error("Failed to refresh trips:", error);
+      if (error.code === 'permission-denied') {
+        setGlobalError("Firestore Permission Denied. Please update your Security Rules.");
+      }
     }
   }, []);
 
@@ -80,8 +85,12 @@ const App: React.FC = () => {
     try {
       const backendBookings = await api.getBookingsForTrip(activeTrip.trip_id);
       persistBookings(backendBookings);
-    } catch (error) {
+      setGlobalError(null);
+    } catch (error: any) {
       console.error("Failed to refresh bookings:", error);
+      if (error.code === 'permission-denied') {
+        setGlobalError("Firestore Permission Denied. Please update your Security Rules.");
+      }
     }
   }, [activeTrip]);
 
@@ -325,6 +334,11 @@ const App: React.FC = () => {
       {!isFirebaseConfigured() && (
         <div className="bg-amber-50 border-b border-amber-100 p-3 text-[10px] text-amber-800 text-center font-black uppercase tracking-tight">
           ⚠️ Firebase not configured. Check .env.example
+        </div>
+      )}
+      {globalError && (
+        <div className="bg-red-600 text-white p-3 text-[10px] text-center font-black uppercase tracking-tight animate-pulse">
+          ⚠️ {globalError}
         </div>
       )}
       <header className="px-4 py-4 flex items-center justify-between border-b sticky top-0 bg-white z-10">

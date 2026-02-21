@@ -1,0 +1,26 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow users to read and write their own profile
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Allow anyone to read rides, but only authenticated users can create them
+    // and only the owner can update/delete them
+    match /rides/{rideId} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null; // Simplified for booking updates
+      allow delete: if request.auth != null && resource.data.carOwnerId == request.auth.uid;
+    }
+    
+    // Bookings rules
+    match /bookings/{bookingId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if request.auth != null && (resource.data.passenger_id == request.auth.uid || get(/databases/$(database)/documents/rides/$(resource.data.trip_id)).data.carOwnerId == request.auth.uid);
+    }
+  }
+}

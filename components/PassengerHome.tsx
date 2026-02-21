@@ -67,8 +67,13 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
       await onBook(trip);
       setBookedTripIds(prev => new Set(prev).add(trip.trip_id));
       setConfirmedTrip(trip);
-    } catch (error) {
-      setBookingError('Booking failed');
+    } catch (error: any) {
+      console.error('Booking error:', error);
+      if (error.code === 'permission-denied') {
+        setBookingError('Permission Denied: Check Firestore Security Rules.');
+      } else {
+        setBookingError('Booking failed. Please try again.');
+      }
     } finally {
       setBookingTripId(null);
     }
