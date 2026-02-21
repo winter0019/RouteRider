@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Trip } from "../types";
 import { ICONS, ROUTES } from "../constants";
 
 interface PassengerHomeProps {
   trips: Trip[];
-  onBook: (trip: Trip) => Promise<void>; // ✅ make async
+  onBook: (trip: Trip) => Promise<void>;
 }
 
 const safeISODate = (value?: string) => {
@@ -41,19 +41,23 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
     date: "",
   });
 
+  useEffect(() => {
+    const timer = setTimeout(() => setIsInitialLoad(false), 450);
+    return () => clearTimeout(timer);
+  }, []);
+
   const filteredTrips = useMemo(() => {
     return trips.filter((trip) => {
-      const [origin, destination] = (trip.route || "")
-        .split("→")
-        .map((s) => s.trim().toLowerCase());
+      const origin = (trip.origin || "").trim().toLowerCase();
+      const destination = (trip.destination || "").trim().toLowerCase();
 
       const matchesOrigin =
         appliedFilters.origin === "" ||
-        origin.includes(appliedFilters.origin.toLowerCase());
+        origin.includes(appliedFilters.origin.trim().toLowerCase());
 
       const matchesDest =
         appliedFilters.dest === "" ||
-        destination.includes(appliedFilters.dest.toLowerCase());
+        destination.includes(appliedFilters.dest.trim().toLowerCase());
 
       const tripDate = safeISODate(trip.departure_time);
       const matchesDate =
@@ -62,11 +66,6 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
       return matchesOrigin && matchesDest && matchesDate;
     });
   }, [trips, appliedFilters]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setIsInitialLoad(false), 600);
-    return () => clearTimeout(timer);
-  }, []);
 
   const handleSearch = () => {
     setIsSearching(true);
@@ -77,7 +76,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
         date: dateQuery,
       });
       setIsSearching(false);
-    }, 250);
+    }, 200);
   };
 
   const handleReset = () => {
@@ -88,13 +87,13 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
   };
 
   const confirmBooking = async (trip: Trip) => {
-    const remaining = (trip.seats_available ?? 0) - (trip.seats_booked ?? 0);
+    const remaining = Number(trip.seats_total ?? 0) - Number(trip.seats_booked ?? 0);
     if (remaining <= 0) return;
 
-    // prevent double-booking
-    if (bookedTripIds.has(trip.trip_id)) return;
+    // prevent double booking in UI
+    if (bookedTripIds.has(trip.id)) return;
 
-    setBookingTripId(trip.trip_id);
+    setBookingTripId(trip.id);
     setSelectedTrip(null);
     setBookingError(null);
 
@@ -102,7 +101,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
       await onBook(trip);
       setBookedTripIds((prev) => {
         const next = new Set(prev);
-        next.add(trip.trip_id);
+        next.add(trip.id);
         return next;
       });
     } catch (error) {
@@ -149,16 +148,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
         <div className="space-y-3">
           <div className="relative">
             <div className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-500">
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
                 <circle cx="12" cy="10" r="3" />
               </svg>
@@ -174,16 +164,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
 
           <div className="relative">
             <div className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-500">
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
                 <circle cx="12" cy="10" r="3" />
               </svg>
@@ -215,16 +196,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
             ) : (
               <>
-                <svg
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="11" cy="11" r="8" />
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
@@ -257,13 +229,16 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
 
         {filteredTrips.length > 0 ? (
           filteredTrips.map((trip) => {
-            const isBooked = bookedTripIds.has(trip.trip_id);
-            const isBooking = bookingTripId === trip.trip_id;
-            const remaining = (trip.seats_available ?? 0) - (trip.seats_booked ?? 0);
+            const isBooked = bookedTripIds.has(trip.id);
+            const isBooking = bookingTripId === trip.id;
+            const remaining = Number(trip.seats_total ?? 0) - Number(trip.seats_booked ?? 0);
+
+            const routeLabel = `${trip.origin} → ${trip.destination}`;
+            const vehicleLabel = `${trip.vehicle?.make || "N/A"} ${trip.vehicle?.model || ""}`.trim();
 
             return (
               <div
-                key={trip.trip_id}
+                key={trip.id}
                 onClick={() => !isBooked && remaining > 0 && !isBooking && setSelectedTrip(trip)}
                 className={`bg-white border-2 border-slate-100 p-5 rounded-3xl shadow-sm space-y-4 transition-all cursor-pointer hover:border-emerald-200 hover:shadow-md ${
                   isBooked ? "opacity-80" : ""
@@ -272,14 +247,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
                 <div className="flex justify-between items-start">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600">
-                      <svg
-                        width="24"
-                        height="24"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.5"
-                      >
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                         <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2" />
                         <circle cx="7" cy="17" r="2" />
                         <circle cx="17" cy="17" r="2" />
@@ -287,9 +255,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
                     </div>
 
                     <div>
-                      <h4 className="font-black text-emerald-900 leading-tight">
-                        {trip.route}
-                      </h4>
+                      <h4 className="font-black text-emerald-900 leading-tight">{routeLabel}</h4>
                       <div className="flex items-center gap-1 text-[10px] font-black text-amber-500 uppercase tracking-tighter mt-0.5">
                         {ICONS.Star} 4.9 • Verified Owner
                       </div>
@@ -298,7 +264,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
 
                   <div className="text-right">
                     <p className="text-xl font-black text-emerald-600">
-                      ₦{ROUTES.SUGGESTED_PRICE_PER_SEAT.toLocaleString()}
+                      ₦{Number(trip.price_per_seat ?? ROUTES.SUGGESTED_PRICE_PER_SEAT).toLocaleString()}
                     </p>
                     <p className="text-[10px] font-bold text-gray-400">per seat</p>
                   </div>
@@ -311,31 +277,21 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="text-gray-400">{ICONS.Car}</div>
-                    <p className="font-black text-sm text-black">Toyota Corolla</p>
+                    <p className="font-black text-sm text-black">{vehicleLabel || "Vehicle"}</p>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex-1 flex items-center gap-2">
-                    <span
-                      className={`w-2 h-2 rounded-full ${
-                        remaining > 0 ? "bg-emerald-500 animate-pulse" : "bg-red-500"
-                      }`}
-                    />
-                    <span
-                      className={`text-xs font-black ${
-                        remaining > 0 ? "text-emerald-700" : "text-red-700"
-                      }`}
-                    >
+                    <span className={`w-2 h-2 rounded-full ${remaining > 0 ? "bg-emerald-500 animate-pulse" : "bg-red-500"}`} />
+                    <span className={`text-xs font-black ${remaining > 0 ? "text-emerald-700" : "text-red-700"}`}>
                       {remaining > 0 ? `${remaining} seats remaining` : "Full"}
                     </span>
                   </div>
 
                   <div
                     className={`px-4 py-2 rounded-xl font-black text-xs ${
-                      isBooked
-                        ? "bg-emerald-100 text-emerald-700"
-                        : "bg-black text-white"
+                      isBooked ? "bg-emerald-100 text-emerald-700" : "bg-black text-white"
                     }`}
                   >
                     {isBooking ? "..." : isBooked ? "Booked ✓" : "Book Seat"}
@@ -347,14 +303,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
         ) : (
           <div className="bg-slate-50 border-2 border-dashed border-slate-200 p-12 rounded-[2rem] text-center space-y-4">
             <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto shadow-sm text-slate-300">
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3"
-              >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                 <circle cx="11" cy="11" r="8" />
                 <line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>
@@ -362,9 +311,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
             <p className="text-sm font-black text-gray-500">
               {hasAnyFilter ? "No trips match your search criteria." : "No vehicles have posted trips yet."}
             </p>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest italic">
-              Try changing your search
-            </p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest italic">Try changing your search</p>
           </div>
         )}
       </section>
@@ -377,9 +324,11 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
 
             <header className="flex justify-between items-start">
               <div className="space-y-1">
-                <h3 className="text-2xl font-black leading-tight">{selectedTrip.route}</h3>
+                <h3 className="text-2xl font-black leading-tight">
+                  {selectedTrip.origin} → {selectedTrip.destination}
+                </h3>
                 <p className="text-emerald-600 font-black">
-                  ₦{ROUTES.SUGGESTED_PRICE_PER_SEAT.toLocaleString()} per seat
+                  ₦{Number(selectedTrip.price_per_seat ?? ROUTES.SUGGESTED_PRICE_PER_SEAT).toLocaleString()} per seat
                 </p>
               </div>
               <button
@@ -393,17 +342,29 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
               </button>
             </header>
 
-            <div className="pt-4">
+            <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4">
+              <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
+                Vehicle
+              </div>
+              <div className="font-black">
+                {selectedTrip.vehicle?.make} {selectedTrip.vehicle?.model} • {selectedTrip.vehicle?.plate_number}
+              </div>
+              <div className="text-xs font-bold text-gray-500 mt-2">
+                Departure: {safeTime(selectedTrip.departure_time)} • Date: {safeISODate(selectedTrip.departure_time)}
+              </div>
+            </div>
+
+            <div className="pt-2">
               <button
                 onClick={() => confirmBooking(selectedTrip)}
                 disabled={
-                  bookingTripId === selectedTrip.trip_id ||
-                  bookedTripIds.has(selectedTrip.trip_id) ||
-                  (selectedTrip.seats_available ?? 0) - (selectedTrip.seats_booked ?? 0) <= 0
+                  bookingTripId === selectedTrip.id ||
+                  bookedTripIds.has(selectedTrip.id) ||
+                  Number(selectedTrip.seats_total ?? 0) - Number(selectedTrip.seats_booked ?? 0) <= 0
                 }
                 className="w-full bg-black text-white p-5 rounded-3xl font-black text-lg shadow-xl shadow-black/10 active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-60"
               >
-                {bookingTripId === selectedTrip.trip_id ? "Booking..." : "Confirm Booking"}
+                {bookingTripId === selectedTrip.id ? "Booking..." : "Confirm Booking"}
               </button>
 
               <p className="text-[10px] text-center text-gray-400 font-bold mt-4 uppercase tracking-widest">
