@@ -1,7 +1,7 @@
 // src/types.ts
 
 /* =========================
-   ENUMS / STATUS
+   ENUMS
 ========================= */
 
 export enum TripStatus {
@@ -19,126 +19,141 @@ export enum BookingStatus {
 }
 
 /* =========================
-   CORE TYPES
+   CORE MODELS
+   (Designed to work with Firestore + older UI code)
 ========================= */
 
-export type UserRole = "driver" | "passenger";
-
-/**
- * Trip
- * - Supports Firestore IDs (string) and SQL IDs (number) using BOTH:
- *    trip_id (string)  -> Firestore document id
- *    id (number)       -> SQL primary key
- * - Use whichever exists in your current storage.
- */
-export type Trip = {
-  // Firestore style
-  trip_id: string;
-
-  // SQL/API style (optional)
-  id?: number;
-
-  // Who posted it (driver)
-  driver_id?: string;        // UI usage
-  driver_user_id?: number;   // SQL usage
-  carOwnerId?: string;       // Firestore usage
-
-  // Route info
-  origin?: string;
-  destination?: string;
-  route: string;             // e.g. "Kano → Katsina"
-  departure_time: string;    // ISO string
-
-  // Seats
-  seats_available: number;   // total seats available
-  seats_booked: number;      // already booked seats
-
-  // Price
-  price_per_seat?: number;
-
-  // ✅ Vehicle info (IMPORTANT FIX)
-  vehicle_name?: string;     // e.g. "Honda Accord"
-  plate_number?: string;     // e.g. "FGE-123-TC"
-
-  // Status
-  status: TripStatus;
-
-  // Extras
-  earnings?: number;
-  created_at?: string;
-
-  // Firestore-only helpers
-  bookedBy?: string[];       // array of userIds who booked (Firestore)
+export type VehicleInfo = {
+  make: string;        // e.g. Honda
+  model: string;       // e.g. Accord
+  plate_number: string;// e.g. FGE-123-TC
+  color?: string;      // optional
 };
 
-/**
- * Booking
- * - Supports Firestore list-style bookings AND SQL/API bookings.
- */
+export type DriverProfile = {
+  user_id: string;                // firebase uid or generated id
+  full_name: string;
+  email?: string;
+  phone_number: string;
+
+  // Driver-only fields
+  car_make?: string;
+  car_model?: string;
+  car_color?: string;
+  plate_number?: string;
+
+  verification_status: {
+    phone: boolean;
+    id: boolean;
+    first_trip: boolean;
+  };
+
+  rating: number;
+  trip_count: number;
+  wallet_balance: number;
+  total_earnings: number;
+
+  profile_photo_url?: string;
+};
+
+export type Trip = {
+  /* Firestore doc id */
+  id: string;
+
+  /* Backward compatibility with older UI */
+  trip_id?: string;
+
+  driver_id: string;       // uid
+  driver_name: string;
+  driver_phone: string;
+
+  origin: string;
+  destination: string;
+
+  // ISO string for UI
+  departure_time: string; // e.g. 2026-02-20T07:00:00.000Z
+
+  // For search filters (optional)
+  trip_date?: string; // YYYY-MM-DD
+  trip_time?: string; // HH:mm
+
+  seats_total: number;
+  seats_booked: number;
+
+  price_per_seat: number;
+
+  status: TripStatus;
+
+  vehicle: VehicleInfo;
+
+  created_at: string; // ISO
+};
+
 export type Booking = {
-  // SQL/API style
-  id?: number;
+  id: string;
 
-  // Firestore/UI style
-  booking_id?: string;
+  booking_id?: string; // backward compat
 
-  // Trip reference
-  trip_id: string | number;
+  trip_id: string;
+  trip_doc_id?: string;
 
-  // Passenger
-  passenger_id?: string;
-  passenger_phone?: string;
+  passenger_id: string; // uid
   passenger_name?: string;
+  passenger_phone?: string;
   passenger_photo?: string;
   passenger_rating?: number;
   passenger_trips?: number;
 
-  // Booking details
-  seats: number;             // seats requested/paid for
+  seats: number;
   amount_paid: number;
 
   status: BookingStatus;
-  created_at: string;
+
+  created_at: string; // ISO
 };
 
-/**
- * Driver / Passenger Profile
- * - Used by onboarding + wallet + profile pages.
- */
-export type DriverProfile = {
-  user_id: string;                 // Firestore uid or local id
-  role: UserRole;
-
-  full_name: string;
-  phone: string;
-
-  profile_photo_url?: string;
-
-  // ✅ Vehicle info (used for posting trips)
-  vehicle_name?: string;           // "Honda Accord"
-  plate_number?: string;           // "FGE-123-TC"
-
-  // Wallet stats
-  wallet_balance: number;
-  total_earnings: number;
-  trip_count: number;
-
-  // Verification
-  is_verified?: boolean;
-  id_status?: "ACTIVE" | "PENDING" | "REJECTED" | "UNVERIFIED";
-};
-
-/**
- * Transaction
- */
 export type Transaction = {
   transaction_id: string;
-
   user_id: string | number;
-
-  type: "deposit" | "withdrawal" | "charge" | "refund";
+  type: "deposit" | "withdrawal" | "commission";
   amount: number;
-
   description: string;
   created_at: string;
 };
+
+/* =========================
+   HELPERS (Optional)
+   Normalize any old trip shape to new shape safely
+========================= */
+
+export function normalizeTrip(t: any): Trip {
+  const id = String(t.id ?? t.trip_id ?? "");
+  const origin = String(t.origin ?? "");
+  const destination = String(t.destination ?? "");
+  const seatsTotal = Number(t.seats_total ?? t.seats_available ?? 0);
+  const seatsBooked = Number(t.seats_booked ?? 0);
+
+  return {
+    id,
+    trip_id: t.trip_id ?? id,
+    driver_id: String(t.driver_id ?? t.carOwnerId ?? ""),
+    driver_name: String(t.driver_name ?? t.driverName ?? "Driver"),
+    driver_phone: String(t.driver_phone ?? t.driverPhone ?? "N/A"),
+    origin,
+    destination,
+    departure_time: String(t.departure_time ?? t.time ?? new Date().toISOString()),
+    trip_date: t.trip_date,
+    trip_time: t.trip_time,
+    seats_total: seatsTotal,
+    seats_booked: seatsBooked,
+    price_per_seat: Number(t.price_per_seat ?? t.price ?? 0),
+    status: (t.status as TripStatus) ?? TripStatus.POSTED,
+    vehicle: {
+      make: String(t.vehicle?.make ?? t.car_make ?? "N/A"),
+      model: String(t.vehicle?.model ?? t.car_model ?? "N/A"),
+      plate_number: String(t.vehicle?.plate_number ?? t.plate_number ?? "N/A"),
+      color: t.vehicle?.color ?? t.car_color,
+    },
+    created_at: String(t.created_at ?? new Date().toISOString()),
+  };
+}
