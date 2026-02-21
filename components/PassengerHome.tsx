@@ -302,56 +302,95 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
 
       {/* Booking Success Modal */}
       {confirmedTrip && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-emerald-600 p-6 animate-in fade-in zoom-in duration-300">
-          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 text-center space-y-6 shadow-2xl relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-2 bg-emerald-500"></div>
-            
-            <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-inner border-4 border-emerald-50">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-md p-6 animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-sm rounded-[3rem] overflow-hidden shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-10 duration-500">
+            {/* Ticket Header */}
+            <div className="bg-emerald-600 p-8 text-center relative">
+              <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
+                <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+                  <path d="M0 0 L100 100 M100 0 L0 100" stroke="white" strokeWidth="0.5" />
+                </svg>
+              </div>
+              
+              <div className="w-20 h-20 bg-white/20 backdrop-blur-md text-white rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-white/30 shadow-lg">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </div>
+              <h3 className="text-3xl font-black text-white tracking-tight">Booking Confirmed!</h3>
+              <p className="text-emerald-100 font-bold text-sm">Show this to your driver at pickup</p>
             </div>
 
-            <div className="space-y-2">
-              <h3 className="text-3xl font-black text-black tracking-tight">Booking Confirmed!</h3>
-              <p className="text-gray-500 font-bold">You're all set for your trip.</p>
-            </div>
+            {/* Ticket Body */}
+            <div className="p-8 space-y-6 relative">
+              {/* Perforated Line Effect */}
+              <div className="absolute -top-3 left-0 w-full flex justify-between px-4">
+                {[...Array(12)].map((_, i) => (
+                  <div key={i} className="w-4 h-4 bg-emerald-600 rounded-full -mt-2"></div>
+                ))}
+              </div>
 
-            <div className="bg-slate-50 rounded-3xl p-5 space-y-4 text-left border-2 border-slate-100">
-              <div className="flex items-center gap-4">
-                <img 
-                  src={`https://picsum.photos/100/100?seed=${confirmedTrip.driver_id}`} 
-                  className="w-12 h-12 rounded-2xl border-2 border-white shadow-sm" 
-                />
-                <div>
-                  <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Driver</p>
-                  <h4 className="font-black text-black">{confirmedTrip.driver_name || 'Ahmad Bello'}</h4>
-                  <p className="text-[10px] text-emerald-600 font-bold">Verified Owner</p>
+              <div className="space-y-6">
+                {/* Route Section */}
+                <div className="space-y-1">
+                  <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Trip Route</p>
+                  <div className="flex items-center gap-3">
+                    <h4 className="text-xl font-black text-black">{confirmedTrip.route}</h4>
+                  </div>
+                </div>
+
+                {/* Driver & Car Details */}
+                <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-3xl border border-slate-100">
+                  <img 
+                    src={`https://picsum.photos/100/100?seed=${confirmedTrip.driver_id}`} 
+                    className="w-14 h-14 rounded-2xl border-2 border-white shadow-sm" 
+                  />
+                  <div className="flex-1">
+                    <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Your Driver</p>
+                    <h4 className="font-black text-black leading-tight">{confirmedTrip.driver_name || 'Ahmad Bello'}</h4>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] bg-emerald-100 text-emerald-700 font-black px-2 py-0.5 rounded-full uppercase tracking-tighter">Verified</span>
+                      <span className="text-[10px] text-amber-500 font-black flex items-center gap-0.5">{ICONS.Star} 4.9</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Car & Time Grid */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100">
+                    <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1">Vehicle</p>
+                    <p className="font-black text-sm text-black leading-tight">{confirmedTrip.car_details || 'Toyota Corolla'}</p>
+                    <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase">Plate Verified</p>
+                  </div>
+                  <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100">
+                    <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1">Departure</p>
+                    <p className="font-black text-sm text-black">
+                      {new Date(confirmedTrip.departure_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                    <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase">Today</p>
+                  </div>
+                </div>
+
+                {/* Price & ID */}
+                <div className="flex items-center justify-between pt-4 border-t border-dashed border-slate-200">
+                  <div>
+                    <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Amount Paid</p>
+                    <p className="text-xl font-black text-emerald-600">₦{ROUTES.SUGGESTED_PRICE_PER_SEAT.toLocaleString()}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Ticket ID</p>
+                    <p className="font-mono text-xs font-black text-slate-900">#{confirmedTrip.trip_id.slice(-6).toUpperCase()}</p>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-200/50">
-                <div>
-                  <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Vehicle</p>
-                  <p className="font-black text-xs">{confirmedTrip.car_details || 'Toyota Corolla'}</p>
-                  <p className="text-[10px] text-slate-500 font-bold">Verified</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Departure</p>
-                  <p className="font-black text-xs">
-                    {new Date(confirmedTrip.departure_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </p>
-                  <p className="text-[10px] text-slate-500 font-bold">Today</p>
-                </div>
-              </div>
+              <button 
+                onClick={() => setConfirmedTrip(null)}
+                className="w-full bg-black text-white p-5 rounded-3xl font-black text-lg shadow-xl shadow-black/10 active:scale-[0.98] transition-all mt-4"
+              >
+                Done
+              </button>
             </div>
-
-            <button 
-              onClick={() => setConfirmedTrip(null)}
-              className="w-full bg-emerald-600 text-white p-5 rounded-3xl font-black text-lg shadow-xl shadow-emerald-200 active:scale-[0.98] transition-all"
-            >
-              Great, thanks!
-            </button>
           </div>
         </div>
       )}

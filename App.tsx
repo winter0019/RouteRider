@@ -127,22 +127,26 @@ const App: React.FC = () => {
 
   // Sync bookings for driver
   useEffect(() => {
-    if (userRole === 'driver' && activeTrip) {
+    if (userRole === 'driver' && activeTrip && isLoggedIn) {
       refreshBookingsFromBackend();
       const interval = setInterval(refreshBookingsFromBackend, 10000); // Poll every 10s
       return () => clearInterval(interval);
     }
-  }, [userRole, activeTrip, refreshBookingsFromBackend]);
+  }, [userRole, activeTrip, isLoggedIn, refreshBookingsFromBackend]);
 
   // optional: refresh when tab becomes active
   useEffect(() => {
     const onFocus = () => {
-      refreshTripsFromBackend();
-      refreshBookingsFromBackend();
+      if (isLoggedIn) {
+        refreshTripsFromBackend();
+        if (userRole === 'driver') {
+          refreshBookingsFromBackend();
+        }
+      }
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [refreshTripsFromBackend, refreshBookingsFromBackend]);
+  }, [isLoggedIn, userRole, refreshTripsFromBackend, refreshBookingsFromBackend]);
 
   // -------------------------
   // Logout

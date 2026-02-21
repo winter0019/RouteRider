@@ -49,6 +49,7 @@ export const api = {
   },
 
   async postTrip(tripData: any) {
+    console.log('Posting trip. Current user:', auth?.currentUser?.uid);
     if (!db || !auth?.currentUser) throw new Error('Not authenticated');
     
     const [origin, destination] = tripData.route.split('→').map((s: string) => s.trim());
@@ -94,6 +95,7 @@ export const api = {
   },
 
   async bookTrip(tripId: string): Promise<void> {
+    console.log('Booking trip. Current user:', auth?.currentUser?.uid);
     if (!db || !auth?.currentUser) throw new Error('Not authenticated');
     try {
       const rideRef = doc(db, 'rides', tripId);
@@ -131,6 +133,7 @@ export const api = {
   },
 
   async createBooking(bookingData: any) {
+    console.log('Creating booking doc. Current user:', auth?.currentUser?.uid);
     if (!db || !auth?.currentUser) throw new Error('Not authenticated');
     const booking = {
       trip_id: bookingData.trip_id,
@@ -153,6 +156,7 @@ export const api = {
   },
 
   async getBookingsForTrip(tripId: string) {
+    console.log('Fetching bookings for trip. Current user:', auth?.currentUser?.uid);
     if (!db) return [];
     try {
       const q = query(collection(db, 'bookings'), where('trip_id', '==', tripId));

@@ -4,6 +4,7 @@ import { auth, isFirebaseConfigured } from '../services/firebase';
 import { 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword,
+  signInAnonymously,
   RecaptchaVerifier,
   signInWithPhoneNumber,
   ConfirmationResult
@@ -132,7 +133,8 @@ const AuthVerification: React.FC<AuthVerificationProps> = ({ onVerified, onBack 
         await confirmationResult.confirm(otp);
         onVerified(phoneNumber);
       } else {
-        // Demo Bypass
+        // Demo Bypass: Sign in anonymously to satisfy Firestore rules
+        if (auth) await signInAnonymously(auth);
         onVerified(phoneNumber);
       }
     } catch (err: any) {

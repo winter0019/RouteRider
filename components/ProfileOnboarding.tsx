@@ -3,6 +3,7 @@ import React, { useState, useRef } from 'react';
 import { DriverProfile } from '../types';
 import { COLORS, ICONS } from '../constants';
 import { verifyDocument } from '../services/geminiService';
+import { auth } from '../services/firebase';
 import AuthVerification from './AuthVerification';
 
 interface ProfileOnboardingProps {
@@ -45,8 +46,9 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
   };
 
   const handleSubmit = () => {
+    const userId = auth?.currentUser?.uid || 'u-' + Math.random().toString(36).substr(2, 5);
     onComplete({
-      user_id: 'u-' + Math.random().toString(36).substr(2, 5),
+      user_id: userId,
       full_name: formData.full_name,
       phone_number: formData.phone || 'N/A',
       car_make: formData.car_make || 'N/A',
