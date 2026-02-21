@@ -1,206 +1,175 @@
-// src/services/api.ts
-
+// /services/api.ts
 import {
-  addDoc,
   collection,
   doc,
   getDocs,
-  orderBy,
-  query,
-  Timestamp,
+  addDoc,
   updateDoc,
-  where,
-  increment,
   getDoc,
+  query,
+  arrayUnion,
+  arrayRemove,
+  Timestamp,
+  orderBy,
 } from "firebase/firestore";
-import { auth, db } from "./firebase";
-import { BookingStatus, Trip, TripStatus, normalizeTrip } from "../types";
+import { db, auth } from "./firebase";
+import { Trip, TripStatus } from "../types";
+import { ROUTES } from "../constants";
 
-/**
- * COLLECTIONS:
- * - rides (Trip docs)
- *
- * NOTE:
- * This MVP stores "seats_booked" directly on the trip doc.
- * Booking status management can be added later using a "bookings" subcollection.
- */
+type FirestoreRideDoc = {
+  carOwnerId: string;
 
-function requireAuth() {
-  if (!auth?.currentUser) throw new Error("Not authenticated");
-  return auth.currentUser;
-}
-
-function ridesCol() {
-  if (!db) throw new Error("Firestore not configured");
-  return collection(db, "rides");
-}
-
-/* =========================
-   READ TRIPS
-========================= */
-
-export async function getTrips(): Promise<Trip[]> {
-  if (!db) return [];
-  const snap = await getDocs(query(ridesCol(), orderBy("createdAt", "desc")));
-  return snap.docs.map((d) => normalizeTrip({ id: d.id, ...d.data() }));
-}
-
-/**
- * Optional server-side search (works only if you store origin/destination/trip_date)
- * If you don’t want Firestore indexing headaches now, you can just call getTrips()
- * and filter on the client.
- */
-export async function searchTrips(params: {
-  origin?: string;
-  destination?: string;
-  date?: string; // YYYY-MM-DD
-}): Promise<Trip[]> {
-  if (!db) return [];
-
-  const filters: any[] = [];
-  if (params.origin) filters.push(where("originLower", "==", params.origin.trim().toLowerCase()));
-  if (params.destination)
-    filters.push(where("destinationLower", "==", params.destination.trim().toLowerCase()));
-  if (params.date) filters.push(where("trip_date", "==", params.date));
-
-  const q = query(ridesCol(), ...filters, orderBy("createdAt", "desc"));
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => normalizeTrip({ id: d.id, ...d.data() }));
-}
-
-/* =========================
-   POST TRIP
-========================= */
-
-export async function postTrip(input: {
   origin: string;
   destination: string;
-  departure_time: string; // ISO
-  trip_date?: string; // YYYY-MM-DD
-  trip_time?: string; // HH:mm
-  seats_total: number;
-  price_per_seat: number;
 
-  driver_name: string;
-  driver_phone: string;
+  time: string; // ISO string
+  seats_available: number;
 
-  vehicle: {
-    make: string;
-    model: string;
-    plate_number: string;
-    color?: string;
+  // pricing
+  price_per_seat?: number;
+
+  // bookings
+  bookedBy: string[];
+
+  // status
+  status: TripStatus;
+
+  // vehicle saved at posting time ✅
+  vehicle_make?: string;
+  vehicle_model?: string;
+  vehicle_color?: string;
+  plate_number?: string;
+
+  // metadata
+  earnings?: number;
+  createdAt: Timestamp;
+};
+
+const ridesCol = () => collection(db, "rides");
+
+const buildTripFromDoc = (id: string, data: FirestoreRideDoc): Trip => {
+  const seatsBooked = Array.isArray(data.bookedBy) ? data.bookedBy.length : 0;
+
+  const vehicleName =
+    [data.vehicle_make, data.vehicle_model].filter(Boolean).join(" ").trim() || undefined;
+
+  return {
+    trip_id: id,
+
+    driver_id: data.carOwnerId,
+
+    origin: data.origin,
+    destination: data.destination,
+
+    departure_time: data.time,
+
+    seats_available: Number(data.seats_available ?? 0),
+    seats_booked: seatsBooked,
+    bookedBy: data.bookedBy || [],
+
+    price_per_seat: Number(data.price_per_seat ?? ROUTES.SUGGESTED_PRICE_PER_SEAT),
+
+    vehicle_make: data.vehicle_make,
+    vehicle_model: data.vehicle_model,
+    vehicle_color: data.vehicle_color,
+    plate_number: data.plate_number,
+
+    route: `${data.origin} → ${data.destination}`,
+    vehicle_name: vehicleName,
+
+    status: data.status || TripStatus.POSTED,
+
+    earnings: Number(data.earnings ?? 0),
+
+    created_at: data.createdAt?.toDate?.().toISOString?.() || new Date().toISOString(),
   };
-}): Promise<Trip> {
-  const user = requireAuth();
-
-  const origin = input.origin.trim();
-  const destination = input.destination.trim();
-
-  if (!origin || !destination) throw new Error("Origin and Destination are required");
-  if (input.seats_total < 1) throw new Error("Seats must be at least 1");
-
-  const payload = {
-    driver_id: user.uid,
-    driver_name: input.driver_name || "Driver",
-    driver_phone: input.driver_phone || "N/A",
-
-    origin,
-    destination,
-    originLower: origin.toLowerCase(),
-    destinationLower: destination.toLowerCase(),
-
-    departure_time: input.departure_time,
-    trip_date: input.trip_date ?? "",
-    trip_time: input.trip_time ?? "",
-
-    seats_total: Number(input.seats_total),
-    seats_booked: 0,
-
-    price_per_seat: Number(input.price_per_seat),
-
-    status: TripStatus.POSTED,
-
-    vehicle: {
-      make: input.vehicle.make || "N/A",
-      model: input.vehicle.model || "N/A",
-      plate_number: input.vehicle.plate_number || "N/A",
-      color: input.vehicle.color || "",
-    },
-
-    createdAt: Timestamp.now(),
-    created_at: new Date().toISOString(),
-  };
-
-  const ref = await addDoc(ridesCol(), payload);
-
-  return normalizeTrip({
-    id: ref.id,
-    ...payload,
-    trip_id: ref.id, // backward compat
-  });
-}
-
-/* =========================
-   BOOK TRIP (simple MVP)
-========================= */
-
-export async function bookTrip(params: { tripId: string; seats?: number }) {
-  const user = requireAuth();
-  if (!db) throw new Error("Firestore not configured");
-
-  const seats = Math.max(1, Number(params.seats ?? 1));
-  const rideRef = doc(db, "rides", params.tripId);
-
-  const rideSnap = await getDoc(rideRef);
-  if (!rideSnap.exists()) throw new Error("Trip not found");
-
-  const trip = normalizeTrip({ id: rideSnap.id, ...rideSnap.data() });
-
-  const remaining = trip.seats_total - trip.seats_booked;
-  if (remaining < seats) throw new Error("Not enough seats remaining");
-
-  // Increment seats_booked
-  await updateDoc(rideRef, {
-    seats_booked: increment(seats),
-    // If you want to track passenger list later:
-    // bookedBy: arrayUnion(user.uid)
-  });
-
-  return { ok: true };
-}
-
-/* =========================
-   Booking Management (Stubs for now)
-   You can upgrade later with a bookings subcollection.
-========================= */
-
-export async function getTripBookings(_tripId: string): Promise<{ ok: boolean; bookings: any[] }> {
-  // TODO: Implement when you move to bookings subcollection
-  return { ok: true, bookings: [] };
-}
-
-export async function updateBookingStatus(_params: { bookingId: number; status: BookingStatus }) {
-  // TODO: Implement when you add booking docs
-  return { ok: true };
-}
-
-export async function completeTrip(_params: { tripId: string }) {
-  // TODO: Implement when you add wallet/commission logic
-  return { ok: true };
-}
-
-/* =========================
-   BACKWARD-COMPAT OBJECT EXPORT
-   So your old imports keep working:
-   import { api } from "../services/api";
-========================= */
+};
 
 export const api = {
-  getTrips,
-  searchTrips,
-  postTrip,
-  bookTrip,
-  getTripBookings,
-  updateBookingStatus,
-  completeTrip,
+  async getTrips(): Promise<Trip[]> {
+    if (!db) return [];
+    try {
+      const qs = await getDocs(query(ridesCol(), orderBy("createdAt", "desc")));
+      return qs.docs.map((d) => buildTripFromDoc(d.id, d.data() as FirestoreRideDoc));
+    } catch (error) {
+      console.error("Firestore Error (getTrips):", error);
+      return [];
+    }
+  },
+
+  /**
+   * postTrip expects the UI Trip object but we only really need route/time/seats and vehicle fields.
+   * Make sure TripPosting sends vehicle_make/model/plate from the driver's profile.
+   */
+  async postTrip(trip: Trip): Promise<Trip> {
+    if (!db || !auth?.currentUser) throw new Error("Not authenticated");
+
+    const ride: FirestoreRideDoc = {
+      carOwnerId: auth.currentUser.uid,
+
+      origin: trip.origin,
+      destination: trip.destination,
+
+      time: trip.departure_time,
+      seats_available: Number(trip.seats_available ?? 0),
+
+      price_per_seat: Number(trip.price_per_seat ?? ROUTES.SUGGESTED_PRICE_PER_SEAT),
+
+      bookedBy: [],
+
+      status: TripStatus.POSTED,
+
+      // ✅ store the actual vehicle the driver entered
+      vehicle_make: trip.vehicle_make,
+      vehicle_model: trip.vehicle_model,
+      vehicle_color: trip.vehicle_color,
+      plate_number: trip.plate_number,
+
+      earnings: 0,
+      createdAt: Timestamp.now(),
+    };
+
+    const docRef = await addDoc(ridesCol(), ride);
+    return buildTripFromDoc(docRef.id, ride);
+  },
+
+  async bookTrip(tripId: string): Promise<void> {
+    if (!db || !auth?.currentUser) throw new Error("Not authenticated");
+    const uid = auth.currentUser.uid;
+
+    const rideRef = doc(db, "rides", tripId);
+
+    // Prevent double booking and prevent booking full rides
+    const snap = await getDoc(rideRef);
+    if (!snap.exists()) throw new Error("Trip not found");
+
+    const data = snap.data() as FirestoreRideDoc;
+
+    const bookedBy = Array.isArray(data.bookedBy) ? data.bookedBy : [];
+    if (bookedBy.includes(uid)) return; // already booked
+
+    const seatsTotal = Number(data.seats_available ?? 0);
+    const seatsBooked = bookedBy.length;
+
+    if (seatsBooked >= seatsTotal) throw new Error("Trip is full");
+
+    await updateDoc(rideRef, {
+      bookedBy: arrayUnion(uid),
+    });
+  },
+
+  async cancelBooking(tripId: string): Promise<void> {
+    if (!db || !auth?.currentUser) throw new Error("Not authenticated");
+    const uid = auth.currentUser.uid;
+
+    const rideRef = doc(db, "rides", tripId);
+    await updateDoc(rideRef, {
+      bookedBy: arrayRemove(uid),
+    });
+  },
+
+  // Optional (your UI calls it but your data model is list-based on ride doc)
+  async updateBookingStatus(_bookingId: string, _status: string) {
+    console.log("updateBookingStatus: not used because bookings are stored in ride.bookedBy");
+  },
 };
