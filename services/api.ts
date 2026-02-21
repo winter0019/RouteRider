@@ -5,6 +5,7 @@ import {
   getDocs, 
   addDoc, 
   updateDoc, 
+  deleteDoc,
   query, 
   where,
   arrayUnion, 
@@ -175,6 +176,17 @@ export const api = {
     } catch (error) {
       console.error('Firestore Error (getBookingsForTrip):', error);
       return [];
+    }
+  },
+
+  async deleteTrip(tripId: string) {
+    if (!db || !auth?.currentUser) throw new Error('Not authenticated');
+    try {
+      const rideRef = doc(db, 'rides', tripId);
+      await deleteDoc(rideRef);
+    } catch (error) {
+      console.error('Firestore Error (deleteTrip):', error);
+      throw error;
     }
   }
 };

@@ -119,8 +119,10 @@ const App: React.FC = () => {
     if (savedBookings) setBookings(JSON.parse(savedBookings));
     if (savedTransactions) setTransactions(JSON.parse(savedTransactions));
 
-    // then refresh from Firestore
-    refreshTripsFromBackend();
+    // then refresh from Firestore if logged in
+    if (savedProfile && savedRole) {
+      refreshTripsFromBackend();
+    }
   }, [refreshTripsFromBackend]);
 
   // Sync bookings for driver

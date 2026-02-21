@@ -78,6 +78,9 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
       trip_count: prev.trip_count + 1
     } : null);
 
+    // Remove from Firestore
+    api.deleteTrip(activeTrip.trip_id).catch(err => console.error("Failed to delete trip from Firestore:", err));
+
     setActiveTrip(null);
     setBookings([]);
     
