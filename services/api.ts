@@ -1,26 +1,18 @@
-// src/services/api.ts
 import {
   collection,
   doc,
   getDocs,
   addDoc,
   updateDoc,
-  getDoc,
   query,
-  orderBy,
+  where,
   Timestamp,
-  runTransaction,
+  orderBy,
+  getDoc,
+  serverTimestamp,
 } from "firebase/firestore";
-import { auth, db } from "./firebase";
-import { BookingStatus, TripStatus, Trip, Booking } from "../types";
-
-/**
- * Firestore structure used:
- * rides (collection)
- *   {rideId} (doc)
- *     bookings (subcollection)
- *        {bookingId} (doc)
- */
+import { db, auth } from "./firebase";
+import { Trip, TripStatus, Booking, BookingStatus } from "../types";
 
 function requireAuth() {
   if (!auth?.currentUser) throw new Error("Not authenticated");
@@ -32,330 +24,219 @@ function requireDb() {
   return db;
 }
 
-function toISODateTime(value: any) {
-  // accept ISO string already
-  if (typeof value === "string") return value;
-  // accept Firestore Timestamp
-  if (value?.toDate) return value.toDate().toISOString();
-  return new Date().toISOString();
+async function getUserProfile(uid: string) {
+  // OPTIONAL: if you store profiles in `users/{uid}`
+  // If you don’t have users collection, we fallback.
+  try {
+    const snap = await getDoc(doc(requireDb(), "users", uid));
+    if (!snap.exists()) return null;
+    return snap.data();
+  } catch {
+    return null;
+  }
 }
 
-function safeNum(n: any, fallback = 0) {
-  const x = Number(n);
-  return Number.isFinite(x) ? x : fallback;
-}
+export const api = {
+  /* =========================
+     TRIPS (RIDES)
+  ========================= */
 
-/* =========================
-   TRIPS
-========================= */
+  async getTrips(): Promise<Trip[]> {
+    const dbx = requireDb();
 
-export async function getTrips(): Promise<Trip[]> {
-  const _db = requireDb();
+    const ridesQ = query(collection(dbx, "rides"), orderBy("createdAt", "desc"));
+    const rideSnap = await getDocs(ridesQ);
 
-  const q = query(collection(_db, "rides"), orderBy("createdAt", "desc"));
-  const snap = await getDocs(q);
+    // For each ride, compute seats_booked from ACCEPTED bookings
+    const trips: Trip[] = [];
 
-  return snap.docs.map((d) => {
-    const data = d.data() as any;
+    for (const rideDoc of rideSnap.docs) {
+      const data = rideDoc.data();
 
-    const origin = String(data.origin ?? "").trim();
-    const destination = String(data.destination ?? "").trim();
+      const bookingsQ = query(
+        collection(dbx, "rides", rideDoc.id, "bookings"),
+        where("status", "==", BookingStatus.ACCEPTED)
+      );
+      const bookingsSnap = await getDocs(bookingsQ);
 
-    const seats_available = safeNum(data.seats_available, safeNum(data.seats_total, 0));
-    const seats_booked = safeNum(data.seats_booked, 0);
+      const bookedSeats = bookingsSnap.docs.reduce((sum, b) => {
+        const seats = Number(b.data().seats ?? 1);
+        return sum + seats;
+      }, 0);
 
-    return {
-      trip_id: d.id,
-      driver_id: data.carOwnerId ?? data.driver_id ?? "",
-      carOwnerId: data.carOwnerId ?? "",
-      origin,
-      destination,
-      route: data.route ?? `${origin} → ${destination}`,
-      departure_time: toISODateTime(data.departure_time ?? data.time),
+      trips.push({
+        trip_id: rideDoc.id,
+        driver_id: data.carOwnerId,
+        carOwnerId: data.carOwnerId,
 
-      seats_available,
-      seats_booked,
+        origin: data.origin,
+        destination: data.destination,
+        route: `${data.origin} → ${data.destination}`,
+        departure_time: data.time,
 
-      price_per_seat: safeNum(data.price_per_seat, 0),
+        seats_available: Number(data.seats_available ?? 0),
+        seats_booked: bookedSeats,
 
-      // ✅ vehicle info (fix mismatch)
-      vehicle_name: data.vehicle_name ?? "",
-      plate_number: data.plate_number ?? "",
+        status: data.status || TripStatus.POSTED,
+        earnings: Number(data.earnings ?? 0),
 
-      status: (data.status as TripStatus) ?? TripStatus.POSTED,
-      earnings: safeNum(data.earnings, 0),
-      created_at: toISODateTime(data.createdAt),
-      bookedBy: Array.isArray(data.bookedBy) ? data.bookedBy : [],
-    } satisfies Trip;
-  });
-}
+        created_at: data.createdAt?.toDate?.().toISOString?.() || new Date().toISOString(),
+      });
+    }
 
-export async function postTrip(input: {
-  origin: string;
-  destination: string;
-  departure_time: string; // ISO
-  seats_available: number;
-  price_per_seat?: number;
+    return trips;
+  },
 
-  // ✅ pass vehicle info from driver profile
-  vehicle_name?: string;
-  plate_number?: string;
-}): Promise<{ ok: boolean; trip: Trip }> {
-  const user = requireAuth();
-  const _db = requireDb();
+  async postTrip(tripData: any) {
+    const dbx = requireDb();
+    const user = requireAuth();
 
-  const origin = String(input.origin ?? "").trim();
-  const destination = String(input.destination ?? "").trim();
+    const [origin, destination] = String(tripData.route || "")
+      .split("→")
+      .map((s: string) => s.trim());
 
-  if (!origin || !destination) throw new Error("Origin and destination are required");
-  if (!input.departure_time) throw new Error("departure_time is required");
-
-  const seats_available = safeNum(input.seats_available, 0);
-  if (seats_available <= 0) throw new Error("seats_available must be > 0");
-
-  const rideDoc: any = {
-    carOwnerId: user.uid,
-
-    origin,
-    destination,
-    route: `${origin} → ${destination}`,
-    departure_time: input.departure_time,
-
-    seats_available,
-    seats_booked: 0,
-
-    price_per_seat: safeNum(input.price_per_seat, 0),
-
-    // ✅ vehicle info
-    vehicle_name: String(input.vehicle_name ?? "").trim(),
-    plate_number: String(input.plate_number ?? "").trim(),
-
-    status: TripStatus.POSTED,
-    earnings: 0,
-    createdAt: Timestamp.now(),
-  };
-
-  const ref = await addDoc(collection(_db, "rides"), rideDoc);
-
-  const trip: Trip = {
-    trip_id: ref.id,
-    driver_id: user.uid,
-    carOwnerId: user.uid,
-    origin,
-    destination,
-    route: rideDoc.route,
-    departure_time: rideDoc.departure_time,
-    seats_available,
-    seats_booked: 0,
-    price_per_seat: rideDoc.price_per_seat,
-    vehicle_name: rideDoc.vehicle_name,
-    plate_number: rideDoc.plate_number,
-    status: TripStatus.POSTED,
-    earnings: 0,
-    created_at: new Date().toISOString(),
-  };
-
-  return { ok: true, trip };
-}
-
-export async function completeTrip(params: { tripId: string }) {
-  const user = requireAuth();
-  const _db = requireDb();
-
-  const rideRef = doc(_db, "rides", params.tripId);
-  const rideSnap = await getDoc(rideRef);
-  if (!rideSnap.exists()) throw new Error("Trip not found");
-
-  const data = rideSnap.data() as any;
-  if (data.carOwnerId !== user.uid) throw new Error("Only the driver can complete this trip");
-
-  await updateDoc(rideRef, {
-    status: TripStatus.COMPLETED,
-    completedAt: Timestamp.now(),
-  });
-
-  return { ok: true };
-}
-
-/* =========================
-   BOOKINGS
-========================= */
-
-export async function getTripBookings(tripId: string): Promise<{ ok: boolean; bookings: Booking[] }> {
-  const _db = requireDb();
-
-  const bookingsRef = collection(_db, "rides", tripId, "bookings");
-  const q = query(bookingsRef, orderBy("createdAt", "desc"));
-  const snap = await getDocs(q);
-
-  const bookings: Booking[] = snap.docs.map((d) => {
-    const data = d.data() as any;
-
-    return {
-      id: undefined,
-      booking_id: d.id,
-      trip_id: tripId,
-
-      passenger_id: data.passenger_id ?? "",
-      passenger_phone: data.passenger_phone ?? "",
-      passenger_name: data.passenger_name ?? "",
-      passenger_photo: data.passenger_photo ?? "",
-      passenger_rating: safeNum(data.passenger_rating, 0),
-      passenger_trips: safeNum(data.passenger_trips, 0),
-
-      seats: safeNum(data.seats, 1),
-      amount_paid: safeNum(data.amount_paid, 0),
-      status: (data.status as BookingStatus) ?? BookingStatus.PENDING,
-      created_at: toISODateTime(data.createdAt),
+    const ride = {
+      carOwnerId: user.uid,
+      origin: origin || tripData.origin || "Unknown",
+      destination: destination || tripData.destination || "Unknown",
+      time: tripData.departure_time || tripData.time || new Date().toISOString(),
+      seats_available: Number(tripData.seats_available ?? tripData.seats ?? 1),
+      status: TripStatus.POSTED,
+      earnings: 0,
+      createdAt: serverTimestamp(),
     };
-  });
 
-  return { ok: true, bookings };
-}
+    const docRef = await addDoc(collection(dbx, "rides"), ride);
 
-/**
- * Passenger books seats:
- * - Creates booking doc under rides/{tripId}/bookings
- * - In a transaction: checks remaining seats, increments seats_booked
- */
-export async function bookTrip(params: {
-  tripId: string;
-  seats?: number;
+    return {
+      ...ride,
+      trip_id: docRef.id,
+    };
+  },
 
-  // passenger details (optional but recommended)
-  passenger_phone?: string;
-  passenger_name?: string;
-  passenger_photo?: string;
-}): Promise<{ ok: boolean; booking: Booking }> {
-  const user = requireAuth();
-  const _db = requireDb();
+  /* =========================
+     BOOKINGS (subcollection)
+  ========================= */
 
-  const seats = Math.max(1, safeNum(params.seats, 1));
+  async bookTrip(params: {
+    tripId: string;
+    seats?: number;
+    amountPaid?: number;
+  }): Promise<Booking> {
+    const dbx = requireDb();
+    const user = requireAuth();
 
-  const rideRef = doc(_db, "rides", params.tripId);
-  const bookingRef = doc(collection(_db, "rides", params.tripId, "bookings"));
-
-  const result = await runTransaction(_db, async (tx) => {
-    const rideSnap = await tx.get(rideRef);
+    // Fetch ride
+    const rideRef = doc(dbx, "rides", params.tripId);
+    const rideSnap = await getDoc(rideRef);
     if (!rideSnap.exists()) throw new Error("Trip not found");
 
-    const ride = rideSnap.data() as any;
+    const ride = rideSnap.data();
+    const seatsRequested = Number(params.seats ?? 1);
 
-    const seats_available = safeNum(ride.seats_available, 0);
-    const seats_booked = safeNum(ride.seats_booked, 0);
-    const remaining = seats_available - seats_booked;
+    // Compute seats booked (accepted)
+    const acceptedQ = query(
+      collection(dbx, "rides", params.tripId, "bookings"),
+      where("status", "==", BookingStatus.ACCEPTED)
+    );
+    const acceptedSnap = await getDocs(acceptedQ);
+    const bookedSeats = acceptedSnap.docs.reduce((sum, b) => sum + Number(b.data().seats ?? 1), 0);
 
-    if (remaining < seats) throw new Error("Not enough seats remaining");
+    const seatsAvailable = Number(ride.seats_available ?? 0);
+    const remaining = seatsAvailable - bookedSeats;
+    if (remaining < seatsRequested) throw new Error("Not enough seats remaining");
 
-    // update trip seats
-    tx.update(rideRef, {
-      seats_booked: seats_booked + seats,
-    });
+    // Passenger profile (optional)
+    const profile = await getUserProfile(user.uid);
 
-    // create booking doc
-    const bookingData: any = {
-      passenger_id: user.uid,
-      passenger_phone: params.passenger_phone ?? "",
-      passenger_name: params.passenger_name ?? "",
-      passenger_photo: params.passenger_photo ?? "",
-
-      seats,
-      amount_paid: safeNum(ride.price_per_seat, 0) * seats,
+    const booking = {
+      rideId: params.tripId,
+      passengerUid: user.uid,
+      passengerName: profile?.full_name || profile?.name || user.phoneNumber || "Passenger",
+      passengerPhoto: profile?.profile_photo_url || `https://picsum.photos/100/100?seed=${user.uid}`,
+      seats: seatsRequested,
+      amountPaid: Number(params.amountPaid ?? ROUTES.SUGGESTED_PRICE_PER_SEAT),
       status: BookingStatus.PENDING,
       createdAt: Timestamp.now(),
     };
 
-    tx.set(bookingRef, bookingData);
+    const bookingRef = await addDoc(collection(dbx, "rides", params.tripId, "bookings"), booking);
 
-    const booking: Booking = {
-      booking_id: bookingRef.id,
+    return {
+      id: bookingRef.id,
       trip_id: params.tripId,
-      passenger_id: user.uid,
-      passenger_phone: bookingData.passenger_phone,
-      passenger_name: bookingData.passenger_name,
-      passenger_photo: bookingData.passenger_photo,
-      seats,
-      amount_paid: bookingData.amount_paid,
-      status: BookingStatus.PENDING,
-      created_at: new Date().toISOString(),
-    };
+      seats: booking.seats,
+      amount_paid: booking.amountPaid,
+      status: booking.status,
+      created_at: booking.createdAt.toDate().toISOString(),
+      // extra fields for UI
+      passenger_name: booking.passengerName,
+      passenger_photo: booking.passengerPhoto,
+    } as any;
+  },
 
-    return booking;
-  });
+  async cancelBooking(params: { tripId: string; bookingId: string }) {
+    const dbx = requireDb();
+    const user = requireAuth();
 
-  return { ok: true, booking: result };
-}
+    const bRef = doc(dbx, "rides", params.tripId, "bookings", params.bookingId);
+    const bSnap = await getDoc(bRef);
+    if (!bSnap.exists()) throw new Error("Booking not found");
 
-/**
- * Driver accepts/rejects a booking.
- * NOTE: We do NOT change seats here because seats were already reserved at booking time.
- */
-export async function updateBookingStatus(params: {
-  tripId: string;
-  bookingId: string;
-  status: BookingStatus;
-}) {
-  const user = requireAuth();
-  const _db = requireDb();
+    const b = bSnap.data();
+    if (b.passengerUid !== user.uid) throw new Error("Not your booking");
 
-  const rideRef = doc(_db, "rides", params.tripId);
-  const rideSnap = await getDoc(rideRef);
-  if (!rideSnap.exists()) throw new Error("Trip not found");
-  const ride = rideSnap.data() as any;
+    await updateDoc(bRef, {
+      status: BookingStatus.CANCELLED,
+    });
 
-  if (ride.carOwnerId !== user.uid) throw new Error("Only the driver can manage bookings");
+    return { ok: true };
+  },
 
-  const bookingRef = doc(_db, "rides", params.tripId, "bookings", params.bookingId);
-  await updateDoc(bookingRef, { status: params.status });
+  async getTripBookings(tripId: string): Promise<Booking[]> {
+    const dbx = requireDb();
+    const user = requireAuth();
 
-  return { ok: true };
-}
-
-/**
- * Passenger cancels:
- * - Sets booking status CANCELLED
- * - Decrements trip seats_booked in a transaction
- */
-export async function cancelBooking(params: { tripId: string; bookingId: string }) {
-  const user = requireAuth();
-  const _db = requireDb();
-
-  const rideRef = doc(_db, "rides", params.tripId);
-  const bookingRef = doc(_db, "rides", params.tripId, "bookings", params.bookingId);
-
-  await runTransaction(_db, async (tx) => {
-    const bookingSnap = await tx.get(bookingRef);
-    if (!bookingSnap.exists()) throw new Error("Booking not found");
-
-    const booking = bookingSnap.data() as any;
-    if (booking.passenger_id !== user.uid) throw new Error("You can only cancel your own booking");
-
-    const rideSnap = await tx.get(rideRef);
+    // Driver only: ensure trip belongs to driver
+    const rideRef = doc(dbx, "rides", tripId);
+    const rideSnap = await getDoc(rideRef);
     if (!rideSnap.exists()) throw new Error("Trip not found");
+    const ride = rideSnap.data();
+    if (ride.carOwnerId !== user.uid) throw new Error("Not allowed");
 
-    const ride = rideSnap.data() as any;
+    const qy = query(collection(dbx, "rides", tripId, "bookings"), orderBy("createdAt", "desc"));
+    const snap = await getDocs(qy);
 
-    const seats = safeNum(booking.seats, 1);
-    const currentBooked = safeNum(ride.seats_booked, 0);
+    return snap.docs.map((d) => {
+      const data = d.data();
+      return {
+        id: d.id,
+        trip_id: tripId,
+        seats: Number(data.seats ?? 1),
+        amount_paid: Number(data.amountPaid ?? 0),
+        status: data.status,
+        created_at: data.createdAt?.toDate?.().toISOString?.() || new Date().toISOString(),
 
-    tx.update(bookingRef, { status: BookingStatus.CANCELLED });
-    tx.update(rideRef, { seats_booked: Math.max(0, currentBooked - seats) });
-  });
+        passenger_name: data.passengerName,
+        passenger_photo: data.passengerPhoto,
+      } as any;
+    });
+  },
 
-  return { ok: true };
-}
+  async updateBookingStatus(params: { tripId: string; bookingId: string; status: string }) {
+    const dbx = requireDb();
+    const user = requireAuth();
 
-/* =========================
-   BACKWARD COMPAT (optional)
-   For older code: import { api } from "../services/api"
-========================= */
+    // Driver only
+    const rideRef = doc(dbx, "rides", params.tripId);
+    const rideSnap = await getDoc(rideRef);
+    if (!rideSnap.exists()) throw new Error("Trip not found");
+    const ride = rideSnap.data();
+    if (ride.carOwnerId !== user.uid) throw new Error("Not allowed");
 
-export const api = {
-  getTrips,
-  postTrip,
-  bookTrip,
-  cancelBooking,
-  getTripBookings,
-  updateBookingStatus,
-  completeTrip,
+    const bRef = doc(dbx, "rides", params.tripId, "bookings", params.bookingId);
+    await updateDoc(bRef, { status: params.status });
+
+    return { ok: true };
+  },
 };
