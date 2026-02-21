@@ -1,11 +1,13 @@
 // src/components/TripPosting.tsx
+
 import React, { useMemo, useState } from "react";
 import { Trip, TripStatus, DriverProfile } from "../types";
 import { ROUTES, COLORS, ICONS } from "../constants";
+import { api } from "../services/api";
 
 interface TripPostingProps {
-  profile: DriverProfile;              // ✅ needed to attach vehicle details
-  onPost: (trip: Trip) => Promise<void> | void; // ✅ allow async (Firestore / API)
+  profile: DriverProfile; // ✅ pass driver profile here
+  onPost: (trip: Trip) => void;
   activeTrip: Trip | null;
   onNavigate: (page: any) => void;
 }
@@ -13,25 +15,22 @@ interface TripPostingProps {
 const TripPosting: React.FC<TripPostingProps> = ({ profile, onPost, activeTrip, onNavigate }) => {
   const [origin, setOrigin] = useState("Katsina");
   const [destination, setDestination] = useState("Kano");
-  const [tripDate, setTripDate] = useState("");        // ✅ optional date
-  const [departureTime, setDepartureTime] = useState("07:00");
+
+  const [tripDate, setTripDate] = useState(() => new Date().toISOString().slice(0, 10)); // YYYY-MM-DD
+  const [departureTime, setDepartureTime] = useState("07:00"); // HH:mm
+
   const [seats, setSeats] = useState(3);
-  const [pricePerSeat, setPricePerSeat] = useState<number>(ROUTES.SUGGESTED_PRICE_PER_SEAT);
   const [isPosting, setIsPosting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const vehicleName = useMemo(() => {
-    // ✅ single source of truth
-    const direct = String(profile.vehicle_name || "").trim();
-    if (direct) return direct;
-
-    const mk = String(profile.car_make || "").trim();
-    const md = String(profile.car_model || "").trim();
-    const joined = `${mk} ${md}`.trim();
-    return joined || "Vehicle";
+  const vehicle = useMemo(() => {
+    return {
+      make: profile.car_make || "N/A",
+      model: profile.car_model || "N/A",
+      plate_number: profile.plate_number || "N/A",
+      color: profile.car_color || "",
+    };
   }, [profile]);
-
-  const plateNumber = useMemo(() => String(profile.plate_number || "N/A").trim(), [profile]);
 
   const handleSwap = () => {
     setOrigin(destination);
@@ -39,136 +38,68 @@ const TripPosting: React.FC<TripPostingProps> = ({ profile, onPost, activeTrip, 
   };
 
   const buildDepartureISO = () => {
-    // If a date was chosen, combine it with time; else assume today
-    const base = tripDate ? new Date(tripDate) : new Date();
-    const [hh, mm] = departureTime.split(":");
-    base.setHours(Number(hh), Number(mm), 0, 0);
-    return base.toISOString();
+    // Build ISO time from tripDate + departureTime
+    const [hh, mm] = departureTime.split(":").map(Number);
+    const dt = new Date(tripDate);
+    dt.setHours(hh, mm, 0, 0);
+    return dt.toISOString();
   };
 
   const handlePost = async () => {
     setError(null);
 
-    const cleanOrigin = origin.trim();
-    const cleanDestination = destination.trim();
-    if (!cleanOrigin || !cleanDestination) {
-      setError("Please enter both origin and destination.");
-      return;
-    }
-    if (cleanOrigin.toLowerCase() === cleanDestination.toLowerCase()) {
-      setError("Origin and destination cannot be the same.");
-      return;
-    }
-    if (seats < 1) {
-      setError("Seats must be at least 1.");
-      return;
-    }
+    const o = origin.trim();
+    const d = destination.trim();
+    if (!o || !d) return setError("Please enter both origin and destination.");
+    if (!profile?.verification_status?.phone) return setError("Phone verification is required.");
+    if (!profile?.verification_status?.id) return setError("ID verification is required to post trips.");
+    if (!profile.plate_number) return setError("Please complete car details (plate number).");
 
     setIsPosting(true);
-
     try {
-      const now = new Date();
-
-      // ✅ IMPORTANT: Trip shape matches your UI usage (PassengerHome etc.)
-      const newTrip: Trip = {
-        trip_id: "t-" + Math.random().toString(36).slice(2, 10),
-
-        // driver
-        driver_id: profile.user_id,
-        driver_name: profile.full_name,
-        driver_phone: profile.phone_number || "N/A",
-
-        // route info
-        origin: cleanOrigin,
-        destination: cleanDestination,
-        route: `${cleanOrigin} → ${cleanDestination}`,
-
-        // time/date
+      const newTrip = await api.postTrip({
+        origin: o,
+        destination: d,
         departure_time: buildDepartureISO(),
-        trip_date: tripDate || undefined,
-        trip_time: departureTime || undefined,
+        trip_date: tripDate,
+        trip_time: departureTime,
+        seats_total: seats,
+        price_per_seat: ROUTES.SUGGESTED_PRICE_PER_SEAT,
 
-        // seats + money
-        seats_available: seats,
-        seats_total: seats, // helpful for driver views
-        seats_booked: 0,
-        price_per_seat: pricePerSeat,
+        driver_name: profile.full_name,
+        driver_phone: profile.phone_number,
 
-        // vehicle (✅ so passenger sees the correct car)
-        vehicle_name: vehicleName,
-        plate_number: plateNumber,
+        vehicle,
+      });
 
-        // status/earnings
-        status: TripStatus.POSTED,
-        earnings: 0,
-        created_at: now.toISOString(),
-      };
-
-      // ✅ supports async API/Firestore post
-      await onPost(newTrip);
-
-      setIsPosting(false);
+      // Ensure status is posted
+      onPost({ ...newTrip, status: TripStatus.POSTED });
+      onNavigate("dashboard");
     } catch (e: any) {
       console.error(e);
       setError(e?.message || "Failed to post trip.");
+    } finally {
       setIsPosting(false);
     }
   };
 
-  // If there's already an active trip, show success screen
+  // If driver already has an active trip, show "Trip Live"
   if (activeTrip) {
     return (
       <div className="flex flex-col items-center justify-center h-[70vh] text-center p-6 space-y-6 animate-in fade-in duration-500">
         <div className="w-24 h-24 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-2 shadow-inner border-4 border-emerald-50">
-          <svg
-            width="40"
-            height="40"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="20 6 9 17 4 12" />
           </svg>
         </div>
 
         <h2 className="text-3xl font-black text-black tracking-tight">Trip is Live!</h2>
-
         <p className="text-gray-600 font-bold leading-relaxed max-w-[280px]">
-          You&apos;re set for <strong>{activeTrip.route}</strong> at{" "}
-          <strong>
-            {new Date(activeTrip.departure_time).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </strong>
-          .
+          You posted <strong>{activeTrip.origin} → {activeTrip.destination}</strong> at{" "}
+          <strong>{new Date(activeTrip.departure_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</strong>.
         </p>
 
-        <div className="bg-white border-2 border-slate-100 rounded-2xl p-4 w-full max-w-sm text-left space-y-2">
-          <div className="flex justify-between">
-            <span className="text-xs font-black text-gray-400 uppercase">Vehicle</span>
-            <span className="text-sm font-black text-black">
-              {(activeTrip as any).vehicle_name || vehicleName}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-xs font-black text-gray-400 uppercase">Plate</span>
-            <span className="text-sm font-black text-black">
-              {(activeTrip as any).plate_number || plateNumber}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-xs font-black text-gray-400 uppercase">Seats</span>
-            <span className="text-sm font-black text-black">
-              {activeTrip.seats_booked}/{(activeTrip as any).seats_total ?? activeTrip.seats_available}
-            </span>
-          </div>
-        </div>
-
-        <div className="w-full pt-4 space-y-4">
+        <div className="w-full pt-6 space-y-4">
           <button
             onClick={() => onNavigate("dashboard")}
             className="block w-full bg-emerald-600 text-white py-5 rounded-2xl font-black shadow-2xl shadow-emerald-200 text-lg hover:scale-[1.02] active:scale-95 transition-all"
@@ -193,22 +124,8 @@ const TripPosting: React.FC<TripPostingProps> = ({ profile, onPost, activeTrip, 
         <p className="text-gray-600 font-bold">Where are you heading today?</p>
       </header>
 
-      {/* Vehicle preview */}
-      <div className="bg-white border-2 border-slate-100 rounded-2xl p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Vehicle shown to passengers</p>
-            <p className="font-black text-lg">{vehicleName}</p>
-            <p className="text-sm font-bold text-slate-500">Plate: {plateNumber}</p>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600">
-            {ICONS.Car}
-          </div>
-        </div>
-      </div>
-
       {error && (
-        <div className="bg-red-50 border border-red-100 p-4 rounded-2xl text-red-700 font-bold">
+        <div className="bg-red-50 border border-red-100 p-4 rounded-2xl text-red-600 font-bold">
           {error}
         </div>
       )}
@@ -217,11 +134,11 @@ const TripPosting: React.FC<TripPostingProps> = ({ profile, onPost, activeTrip, 
         {/* Route Inputs */}
         <div className="space-y-3 relative">
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">
-              Starting From
-            </label>
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Starting From</label>
             <div className="flex items-center gap-3 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl">
-              <div className="text-emerald-500">{ICONS.Location}</div>
+              <div className="text-emerald-500">
+                <MapPin size={20} />
+              </div>
               <input
                 placeholder="Origin (e.g. Daura)"
                 value={origin}
@@ -234,18 +151,16 @@ const TripPosting: React.FC<TripPostingProps> = ({ profile, onPost, activeTrip, 
           <button
             onClick={handleSwap}
             className="absolute right-4 top-1/2 -translate-y-1/2 mt-1 z-10 w-10 h-10 bg-white border-2 border-slate-100 rounded-full flex items-center justify-center text-emerald-600 shadow-sm active:rotate-180 transition-transform duration-300"
-            type="button"
-            aria-label="Swap"
           >
             {ICONS.Swap}
           </button>
 
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">
-              Destination
-            </label>
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Destination</label>
             <div className="flex items-center gap-3 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl">
-              <div className="text-emerald-500">{ICONS.Location}</div>
+              <div className="text-emerald-500">
+                <MapPin size={20} />
+              </div>
               <input
                 placeholder="Where to? (e.g. Katsina)"
                 value={destination}
@@ -256,43 +171,37 @@ const TripPosting: React.FC<TripPostingProps> = ({ profile, onPost, activeTrip, 
           </div>
         </div>
 
-        {/* Optional Date */}
-        <div className="space-y-2">
-          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">
-            Trip Date (Optional)
-          </label>
-          <input
-            type="date"
-            value={tripDate}
-            onChange={(e) => setTripDate(e.target.value)}
-            className="w-full p-5 bg-white border-2 border-slate-200 rounded-2xl text-lg font-black text-black focus:outline-none focus:ring-4 focus:ring-emerald-500/20 transition-all"
-          />
-        </div>
+        {/* Date + Time */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Trip Date</label>
+            <input
+              type="date"
+              value={tripDate}
+              onChange={(e) => setTripDate(e.target.value)}
+              className="w-full p-4 bg-white border-2 border-slate-200 rounded-2xl font-black text-black focus:outline-none focus:ring-4 focus:ring-emerald-500/20 transition-all"
+            />
+          </div>
 
-        {/* Departure Time */}
-        <div className="space-y-2">
-          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">
-            Departure Time
-          </label>
-          <input
-            type="time"
-            value={departureTime}
-            onChange={(e) => setDepartureTime(e.target.value)}
-            className="w-full p-5 bg-white border-2 border-slate-200 rounded-2xl text-xl font-black text-black focus:outline-none focus:ring-4 focus:ring-emerald-500/20 transition-all"
-          />
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Departure</label>
+            <input
+              type="time"
+              value={departureTime}
+              onChange={(e) => setDepartureTime(e.target.value)}
+              className="w-full p-4 bg-white border-2 border-slate-200 rounded-2xl font-black text-black focus:outline-none focus:ring-4 focus:ring-emerald-500/20 transition-all"
+            />
+          </div>
         </div>
 
         {/* Seats Selector */}
         <div className="space-y-2">
-          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">
-            Available Seats
-          </label>
+          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Available Seats</label>
           <div className="flex gap-3">
             {[1, 2, 3, 4].map((n) => (
               <button
                 key={n}
                 onClick={() => setSeats(n)}
-                type="button"
                 className={`flex-1 p-5 rounded-2xl font-black text-2xl transition-all ${
                   seats === n
                     ? `${COLORS.primary} text-white border-transparent shadow-2xl shadow-emerald-200 scale-105`
@@ -305,24 +214,20 @@ const TripPosting: React.FC<TripPostingProps> = ({ profile, onPost, activeTrip, 
           </div>
         </div>
 
-        {/* Price per seat */}
-        <div className="space-y-2">
-          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">
-            Price Per Seat (₦)
-          </label>
-          <input
-            type="number"
-            min={0}
-            value={pricePerSeat}
-            onChange={(e) => setPricePerSeat(Number(e.target.value))}
-            className="w-full p-5 bg-white border-2 border-slate-200 rounded-2xl text-xl font-black text-black focus:outline-none focus:ring-4 focus:ring-emerald-500/20 transition-all"
-          />
+        {/* Vehicle Preview (what passenger will see) */}
+        <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4">
+          <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
+            Passenger will see
+          </div>
+          <div className="font-black">
+            {vehicle.make} {vehicle.model} • {vehicle.plate_number}
+          </div>
         </div>
 
         <button
           onClick={handlePost}
-          disabled={isPosting || !origin.trim() || !destination.trim()}
-          className={`w-full ${COLORS.primary} text-white p-5 rounded-2xl font-black text-xl shadow-2xl shadow-emerald-200 hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-3 mt-6 disabled:opacity-50`}
+          disabled={isPosting}
+          className={`w-full ${COLORS.primary} text-white p-5 rounded-2xl font-black text-xl shadow-2xl shadow-emerald-200 hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-3 mt-2 disabled:opacity-50`}
         >
           {isPosting ? (
             <div className="w-7 h-7 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -338,4 +243,22 @@ const TripPosting: React.FC<TripPostingProps> = ({ profile, onPost, activeTrip, 
   );
 };
 
+const MapPin: React.FC<{ size?: number; className?: string }> = ({ size = 20, className = "" }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="3"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+    <circle cx="12" cy="10" r="3" />
+  </svg>
+);
+
 export default TripPosting;
+
