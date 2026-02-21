@@ -1,196 +1,218 @@
-
-import { 
-  collection, 
-  doc, 
-  getDocs, 
-  addDoc, 
-  updateDoc, 
+import {
+  collection,
+  doc,
+  getDocs,
+  addDoc,
+  updateDoc,
   deleteDoc,
-  query, 
+  query,
   where,
-  arrayUnion, 
+  arrayUnion,
   arrayRemove,
   Timestamp,
-  orderBy
-} from 'firebase/firestore';
-import { db, auth } from './firebase';
-import { Trip, TripStatus } from '../types';
+  orderBy,
+  increment,
+} from "firebase/firestore";
+
+import { db, auth } from "./firebase";
+import { Trip, TripStatus, Booking, BookingStatus } from "../types";
+
+const RIDES_COL = "rides";
+const BOOKINGS_COL = "bookings";
 
 export const api = {
   async getTrips(): Promise<Trip[]> {
     if (!db) return [];
+
     try {
-      const querySnapshot = await getDocs(query(collection(db, 'rides'), orderBy('createdAt', 'desc')));
-      return querySnapshot.docs.map(docSnap => {
-        const data = docSnap.data();
+      const q = query(collection(db, RIDES_COL), orderBy("createdAt", "desc"));
+      const snap = await getDocs(q);
+
+      return snap.docs.map((d) => {
+        const data: any = d.data();
+
+        const bookedBy: string[] = Array.isArray(data.bookedBy) ? data.bookedBy : [];
+        const seatsBooked = typeof data.seats_booked === "number" ? data.seats_booked : bookedBy.length;
+        const seatsAvailable = typeof data.seats_available === "number" ? data.seats_available : 0;
+
+        const origin = String(data.origin || "");
+        const destination = String(data.destination || "");
+
         return {
-          trip_id: docSnap.id,
+          id: d.id,
+          trip_id: d.id, // keep both for compatibility
           driver_id: data.carOwnerId,
           carOwnerId: data.carOwnerId,
-          origin: data.origin,
-          destination: data.destination,
+
+          origin,
+          destination,
+          route: `${origin} → ${destination}`,
+
+          departure_time: data.time, // store as string/date
           time: data.time,
-          bookedBy: data.bookedBy || [],
-          driver_name: data.driver_name || 'Verified Owner',
-          car_details: data.car_details || 'Toyota Corolla',
-          route: `${data.origin} → ${data.destination}`,
-          departure_time: data.time,
-          seats_available: data.seats_available,
-          seats_booked: (data.bookedBy || []).length,
-          status: data.status || TripStatus.POSTED,
-          earnings: data.earnings || 0,
-          created_at: data.createdAt?.toDate().toISOString() || new Date().toISOString()
-        };
+
+          seats_available: seatsAvailable,
+          seats_booked: seatsBooked,
+
+          price_per_seat: Number(data.price_per_seat ?? 0),
+          driver_name: String(data.driver_name || "Verified Owner"),
+
+          // ✅ THIS is what passenger UI should display
+          vehicle_name: String(data.vehicle_name || data.car_details || "Vehicle"),
+          car_details: String(data.car_details || data.vehicle_name || "Vehicle"),
+
+          status: (data.status as TripStatus) || TripStatus.POSTED,
+          earnings: Number(data.earnings ?? 0),
+          bookedBy,
+
+          created_at: data.createdAt?.toDate?.().toISOString?.() || new Date().toISOString(),
+        } as Trip;
       });
-    } catch (error) {
-      console.error('Firestore Error (getTrips):', error);
+    } catch (err) {
+      console.error("Firestore Error (getTrips):", err);
       return [];
     }
   },
 
-  async postTrip(tripData: any) {
-    console.log('Posting trip. Current user:', auth?.currentUser?.uid);
-    if (!db || !auth?.currentUser) throw new Error('Not authenticated');
-    
-    const [origin, destination] = tripData.route.split('→').map((s: string) => s.trim());
-    
-    const ride = {
+  async postTrip(tripData: Partial<Trip>): Promise<Trip> {
+    if (!db || !auth?.currentUser) throw new Error("Not authenticated");
+
+    const origin = String(tripData.origin || "").trim();
+    const destination = String(tripData.destination || "").trim();
+
+    const seatsAvailable = Number(tripData.seats_available ?? 1);
+    const pricePerSeat = Number(tripData.price_per_seat ?? 0);
+
+    const ride: any = {
       carOwnerId: auth.currentUser.uid,
       bookedBy: [],
-      driver_name: tripData.driver_name,
-      car_details: tripData.car_details,
-      origin: origin || 'Unknown',
-      destination: destination || 'Unknown',
-      time: tripData.departure_time,
-      seats_available: tripData.seats_available,
+      seats_available: seatsAvailable,
+      seats_booked: 0,
+
+      origin,
+      destination,
+      time: tripData.departure_time || tripData.time || new Date().toISOString(),
+
+      // driver display data
+      driver_name: tripData.driver_name || "Verified Owner",
+      vehicle_name: tripData.vehicle_name || tripData.car_details || "Vehicle",
+      car_details: tripData.car_details || tripData.vehicle_name || "Vehicle",
+      price_per_seat: pricePerSeat,
+
       status: TripStatus.POSTED,
       earnings: 0,
-      createdAt: Timestamp.now()
+      createdAt: Timestamp.now(),
     };
 
-    try {
-      const docRef = await addDoc(collection(db, 'rides'), ride);
-      return {
-        trip_id: docRef.id,
-        driver_id: ride.carOwnerId,
-        carOwnerId: ride.carOwnerId,
-        origin: ride.origin,
-        destination: ride.destination,
-        time: ride.time,
-        bookedBy: ride.bookedBy,
-        driver_name: ride.driver_name,
-        car_details: ride.car_details,
-        route: `${ride.origin} → ${ride.destination}`,
-        departure_time: ride.time,
-        seats_available: ride.seats_available,
-        seats_booked: 0,
-        status: ride.status,
-        earnings: ride.earnings,
-        created_at: ride.createdAt.toDate().toISOString()
-      };
-    } catch (error) {
-      console.error('Firestore Error (postTrip):', error);
-      throw error;
-    }
+    const ref = await addDoc(collection(db, RIDES_COL), ride);
+
+    return {
+      id: ref.id,
+      trip_id: ref.id,
+      driver_id: ride.carOwnerId,
+      carOwnerId: ride.carOwnerId,
+
+      origin: ride.origin,
+      destination: ride.destination,
+      route: `${ride.origin} → ${ride.destination}`,
+
+      departure_time: ride.time,
+      time: ride.time,
+
+      seats_available: ride.seats_available,
+      seats_booked: 0,
+
+      price_per_seat: ride.price_per_seat,
+      driver_name: ride.driver_name,
+      vehicle_name: ride.vehicle_name,
+      car_details: ride.car_details,
+
+      status: ride.status,
+      earnings: ride.earnings,
+      bookedBy: [],
+      created_at: new Date().toISOString(),
+    } as Trip;
   },
 
+  // ✅ IMPORTANT: This must update BOTH bookedBy and seats_booked
   async bookTrip(tripId: string): Promise<void> {
-    console.log('Booking trip. Current user:', auth?.currentUser?.uid);
-    if (!db || !auth?.currentUser) throw new Error('Not authenticated');
-    try {
-      const rideRef = doc(db, 'rides', tripId);
-      await updateDoc(rideRef, {
-        bookedBy: arrayUnion(auth.currentUser.uid)
-      });
-    } catch (error) {
-      console.error('Firestore Error (bookTrip):', error);
-      throw error;
-    }
+    if (!db || !auth?.currentUser) throw new Error("Not authenticated");
+
+    const uid = auth.currentUser.uid;
+    const rideRef = doc(db, RIDES_COL, tripId);
+
+    await updateDoc(rideRef, {
+      bookedBy: arrayUnion(uid),
+      seats_booked: increment(1),
+    });
   },
 
   async cancelBooking(tripId: string): Promise<void> {
-    if (!db || !auth?.currentUser) throw new Error('Not authenticated');
-    try {
-      const rideRef = doc(db, 'rides', tripId);
-      await updateDoc(rideRef, {
-        bookedBy: arrayRemove(auth.currentUser.uid)
-      });
-    } catch (error) {
-      console.error('Firestore Error (cancelBooking):', error);
-      throw error;
-    }
+    if (!db || !auth?.currentUser) throw new Error("Not authenticated");
+
+    const uid = auth.currentUser.uid;
+    const rideRef = doc(db, RIDES_COL, tripId);
+
+    await updateDoc(rideRef, {
+      bookedBy: arrayRemove(uid),
+      seats_booked: increment(-1),
+    });
   },
 
-  async updateBookingStatus(bookingId: string, status: string) {
-    if (!db) return;
-    try {
-      const bookingRef = doc(db, 'bookings', bookingId);
-      await updateDoc(bookingRef, { status });
-    } catch (error) {
-      console.error('Firestore Error (updateBookingStatus):', error);
-      throw error;
-    }
-  },
+  // Optional bookings collection (only if you use it)
+  async createBooking(bookingData: any): Promise<Booking> {
+    if (!db || !auth?.currentUser) throw new Error("Not authenticated");
 
-  async createBooking(bookingData: any) {
-    console.log('Creating booking doc. Current user:', auth?.currentUser?.uid);
-    if (!db || !auth?.currentUser) throw new Error('Not authenticated');
-    const booking = {
+    const booking: any = {
       trip_id: bookingData.trip_id,
       passenger_id: auth.currentUser.uid,
-      passenger_name: bookingData.passenger_name,
-      passenger_photo: bookingData.passenger_photo || `https://picsum.photos/100/100?seed=${auth.currentUser.uid}`,
-      passenger_rating: 5.0,
-      passenger_trips: 0,
-      seats_booked: bookingData.seats_booked || 1,
-      amount_paid: bookingData.amount_paid,
-      status: 'pending',
-      createdAt: Timestamp.now()
+      passenger_name: bookingData.passenger_name || "Passenger",
+      passenger_photo:
+        bookingData.passenger_photo || `https://picsum.photos/100/100?seed=${auth.currentUser.uid}`,
+      seats_booked: bookingData.seats_booked ?? 1,
+      amount_paid: Number(bookingData.amount_paid ?? 0),
+      status: BookingStatus.PENDING,
+      createdAt: Timestamp.now(),
     };
-    const docRef = await addDoc(collection(db, 'bookings'), booking);
-    return { 
-      ...booking, 
-      booking_id: docRef.id,
-      created_at: booking.createdAt.toDate().toISOString()
-    };
+
+    const ref = await addDoc(collection(db, BOOKINGS_COL), booking);
+
+    return {
+      booking_id: ref.id,
+      trip_id: booking.trip_id,
+      passenger_id: booking.passenger_id,
+      passenger_name: booking.passenger_name,
+      passenger_photo: booking.passenger_photo,
+      seats_booked: booking.seats_booked,
+      amount_paid: booking.amount_paid,
+      status: booking.status,
+      created_at: booking.createdAt.toDate().toISOString(),
+    } as Booking;
   },
 
-  async getBookingsForTrip(tripId: string) {
-    console.log('Fetching bookings for trip. Current user:', auth?.currentUser?.uid);
+  async getBookingsForTrip(tripId: string): Promise<Booking[]> {
     if (!db) return [];
-    try {
-      const q = query(collection(db, 'bookings'), where('trip_id', '==', tripId));
-      const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(docSnap => {
-        const data = docSnap.data();
-        return {
-          booking_id: docSnap.id,
-          trip_id: data.trip_id,
-          passenger_id: data.passenger_id,
-          passenger_name: data.passenger_name,
-          passenger_photo: data.passenger_photo,
-          passenger_rating: data.passenger_rating,
-          passenger_trips: data.passenger_trips,
-          seats_booked: data.seats_booked,
-          amount_paid: data.amount_paid,
-          status: data.status,
-          created_at: data.createdAt?.toDate().toISOString() || new Date().toISOString()
-        };
-      });
-    } catch (error) {
-      console.error('Firestore Error (getBookingsForTrip):', error);
-      return [];
-    }
+    const q = query(collection(db, BOOKINGS_COL), where("trip_id", "==", tripId));
+    const snap = await getDocs(q);
+
+    return snap.docs.map((d) => {
+      const data: any = d.data();
+      return {
+        booking_id: d.id,
+        trip_id: data.trip_id,
+        passenger_id: data.passenger_id,
+        passenger_name: data.passenger_name,
+        passenger_photo: data.passenger_photo,
+        seats_booked: data.seats_booked,
+        amount_paid: data.amount_paid,
+        status: data.status,
+        created_at: data.createdAt?.toDate?.().toISOString?.() || new Date().toISOString(),
+      } as Booking;
+    });
   },
 
   async deleteTrip(tripId: string) {
-    if (!db || !auth?.currentUser) throw new Error('Not authenticated');
-    try {
-      const rideRef = doc(db, 'rides', tripId);
-      await deleteDoc(rideRef);
-    } catch (error) {
-      console.error('Firestore Error (deleteTrip):', error);
-      throw error;
-    }
-  }
+    if (!db || !auth?.currentUser) throw new Error("Not authenticated");
+    await deleteDoc(doc(db, RIDES_COL, tripId));
+  },
 };
