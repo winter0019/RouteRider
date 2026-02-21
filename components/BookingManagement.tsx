@@ -18,28 +18,10 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
 }) => {
   const [viewingPassenger, setViewingPassenger] = useState<Booking | null>(null);
 
-  // Mock initial demo booking ONLY if absolutely empty and active trip exists
+  // No mock bookings - use real data from Firestore
   useEffect(() => {
-    if (activeTrip && activeTrip.status === TripStatus.POSTED && bookings.length === 0) {
-      const timer = setTimeout(() => {
-        const mockBooking: Booking = {
-          booking_id: 'b-mock',
-          trip_id: activeTrip.trip_id,
-          passenger_id: 'p-sarah',
-          passenger_name: 'Sarah O.',
-          passenger_rating: 4.8,
-          passenger_trips: 12,
-          passenger_photo: 'https://picsum.photos/100/100?seed=sarah',
-          seats_booked: 1,
-          amount_paid: ROUTES.SUGGESTED_PRICE_PER_SEAT,
-          status: BookingStatus.PENDING,
-          created_at: new Date().toISOString(),
-        };
-        setBookings([mockBooking]);
-      }, 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [activeTrip, bookings.length, setBookings]);
+    // This was previously adding a mock booking for Sarah O.
+  }, []);
 
   const handleAction = async (bookingId: string, action: 'accept' | 'reject') => {
     const status = action === 'accept' ? BookingStatus.ACCEPTED : BookingStatus.REJECTED;

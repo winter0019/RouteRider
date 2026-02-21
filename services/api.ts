@@ -6,6 +6,7 @@ import {
   addDoc, 
   updateDoc, 
   query, 
+  where,
   arrayUnion, 
   arrayRemove,
   Timestamp,
@@ -118,6 +119,62 @@ export const api = {
   },
 
   async updateBookingStatus(bookingId: string, status: string) {
-    console.log('Update booking status not implemented for list-based bookings');
+    if (!db) return;
+    try {
+      const bookingRef = doc(db, 'bookings', bookingId);
+      await updateDoc(bookingRef, { status });
+    } catch (error) {
+      console.error('Firestore Error (updateBookingStatus):', error);
+      throw error;
+    }
+  },
+
+  async createBooking(bookingData: any) {
+    if (!db || !auth?.currentUser) throw new Error('Not authenticated');
+    const booking = {
+      trip_id: bookingData.trip_id,
+      passenger_id: auth.currentUser.uid,
+      passenger_name: bookingData.passenger_name,
+      passenger_photo: bookingData.passenger_photo || `https://picsum.photos/100/100?seed=${auth.currentUser.uid}`,
+      passenger_rating: 5.0,
+      passenger_trips: 0,
+      seats_booked: bookingData.seats_booked || 1,
+      amount_paid: bookingData.amount_paid,
+      status: 'pending',
+      createdAt: Timestamp.now()
+    };
+    const docRef = await addDoc(collection(db, 'bookings'), booking);
+    return { 
+      ...booking, 
+      booking_id: docRef.id,
+      created_at: booking.createdAt.toDate().toISOString()
+    };
+  },
+
+  async getBookingsForTrip(tripId: string) {
+    if (!db) return [];
+    try {
+      const q = query(collection(db, 'bookings'), where('trip_id', '==', tripId));
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(docSnap => {
+        const data = docSnap.data();
+        return {
+          booking_id: docSnap.id,
+          trip_id: data.trip_id,
+          passenger_id: data.passenger_id,
+          passenger_name: data.passenger_name,
+          passenger_photo: data.passenger_photo,
+          passenger_rating: data.passenger_rating,
+          passenger_trips: data.passenger_trips,
+          seats_booked: data.seats_booked,
+          amount_paid: data.amount_paid,
+          status: data.status,
+          created_at: data.createdAt?.toDate().toISOString() || new Date().toISOString()
+        };
+      });
+    } catch (error) {
+      console.error('Firestore Error (getBookingsForTrip):', error);
+      return [];
+    }
   }
 };

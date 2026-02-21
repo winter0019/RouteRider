@@ -18,7 +18,7 @@ import PassengerHome from "./components/PassengerHome";
 
 import { api } from "./services/api";
 import { firestoreService } from "./services/firestoreService";
-import { auth } from "./services/firebase";
+import { auth, isFirebaseConfigured } from "./services/firebase";
 
 type Page = "dashboard" | "post-trip" | "bookings" | "wallet" | "settings" | "search";
 type UserRole = "driver" | "passenger";
@@ -75,6 +75,16 @@ const App: React.FC = () => {
     }
   }, []);
 
+  const refreshBookingsFromBackend = useCallback(async () => {
+    if (!activeTrip) return;
+    try {
+      const backendBookings = await api.getBookingsForTrip(activeTrip.trip_id);
+      persistBookings(backendBookings);
+    } catch (error) {
+      console.error("Failed to refresh bookings:", error);
+    }
+  }, [activeTrip]);
+
   // -------------------------
   // Initial load + sync
   // -------------------------
@@ -104,12 +114,24 @@ const App: React.FC = () => {
     refreshTripsFromBackend();
   }, [refreshTripsFromBackend]);
 
+  // Sync bookings for driver
+  useEffect(() => {
+    if (userRole === 'driver' && activeTrip) {
+      refreshBookingsFromBackend();
+      const interval = setInterval(refreshBookingsFromBackend, 10000); // Poll every 10s
+      return () => clearInterval(interval);
+    }
+  }, [userRole, activeTrip, refreshBookingsFromBackend]);
+
   // optional: refresh when tab becomes active
   useEffect(() => {
-    const onFocus = () => refreshTripsFromBackend();
+    const onFocus = () => {
+      refreshTripsFromBackend();
+      refreshBookingsFromBackend();
+    };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [refreshTripsFromBackend]);
+  }, [refreshTripsFromBackend, refreshBookingsFromBackend]);
 
   // -------------------------
   // Logout
@@ -158,27 +180,21 @@ const App: React.FC = () => {
   // -------------------------
   const handleBookTrip = async (trip: Trip) => {
     try {
-      // Firestore booking: updates bookedBy
+      // Create real booking in Firestore
+      const newBooking = await api.createBooking({
+        trip_id: trip.trip_id,
+        passenger_name: profile?.full_name || 'Anonymous',
+        passenger_photo: profile?.profile_photo_url,
+        amount_paid: ROUTES.SUGGESTED_PRICE_PER_SEAT,
+      });
+
+      // Also update the ride's bookedBy list (legacy support/simple count)
       await api.bookTrip(trip.trip_id);
 
       // refresh so seat counts update immediately
       await refreshTripsFromBackend();
 
-      // local “booking record” for UI
-      const mockBooking: Booking = {
-        booking_id: 'b-' + Math.random().toString(36).substr(2, 5),
-        trip_id: trip.trip_id,
-        passenger_id: auth?.currentUser?.uid || 'guest',
-        passenger_name: profile?.full_name || 'Anonymous',
-        passenger_rating: 5.0,
-        passenger_trips: 0,
-        seats_booked: 1,
-        amount_paid: ROUTES.SUGGESTED_PRICE_PER_SEAT,
-        status: BookingStatus.ACCEPTED,
-        created_at: new Date().toISOString(),
-      };
-
-      persistBookings([mockBooking, ...bookings]);
+      persistBookings([newBooking, ...bookings]);
     } catch (error) {
       console.error("Failed to book trip:", error);
       throw error;
@@ -306,6 +322,11 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col min-h-screen max-w-md mx-auto bg-white shadow-xl relative overflow-hidden text-black font-bold">
+      {!isFirebaseConfigured() && (
+        <div className="bg-amber-50 border-b border-amber-100 p-3 text-[10px] text-amber-800 text-center font-black uppercase tracking-tight">
+          ⚠️ Firebase not configured. Check .env.example
+        </div>
+      )}
       <header className="px-4 py-4 flex items-center justify-between border-b sticky top-0 bg-white z-10">
         <button
           onClick={() => setCurrentPage(userRole === "passenger" ? "search" : "dashboard")}
