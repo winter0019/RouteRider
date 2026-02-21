@@ -188,7 +188,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
                         {trip.route}
                       </h4>
                       <div className="flex items-center gap-1 text-[10px] font-black text-amber-500 uppercase tracking-tighter mt-0.5">
-                        {ICONS.Star} 4.9 • Verified Owner
+                        {ICONS.Star} 4.9 • {trip.driver_name || 'Verified Owner'}
                       </div>
                     </div>
                   </div>
@@ -205,7 +205,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
                   </div>
                   <div className="flex items-center gap-2">
                      <div className="text-gray-400">{ICONS.Car}</div>
-                     <p className="font-black text-sm text-black">Toyota Corolla</p>
+                     <p className="font-black text-sm text-black">{trip.car_details || 'Toyota Corolla'}</p>
                   </div>
                 </div>
 
@@ -259,7 +259,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
                    <img src={`https://picsum.photos/100/100?seed=${selectedTrip.driver_id}`} className="w-14 h-14 rounded-2xl border-2 border-white shadow-sm" />
                    <div>
                       <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Car Owner</p>
-                      <h4 className="font-black text-black">Ahmad Bello</h4>
+                      <h4 className="font-black text-black">{selectedTrip.driver_name || 'Ahmad Bello'}</h4>
                       <div className="flex items-center gap-1 text-amber-500 font-black text-xs">
                         {ICONS.Star} 4.9 • Verified
                       </div>
@@ -269,8 +269,8 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
                 <div className="grid grid-cols-2 gap-3">
                    <div className="bg-slate-50 p-4 rounded-3xl space-y-1">
                       <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Vehicle</p>
-                      <p className="font-black text-sm">Toyota Corolla</p>
-                      <p className="text-[10px] text-emerald-600 font-bold">Katsina Plate: KTN-402</p>
+                      <p className="font-black text-sm">{selectedTrip.car_details || 'Toyota Corolla'}</p>
+                      <p className="text-[10px] text-emerald-600 font-bold">Verified</p>
                    </div>
                    <div className="bg-slate-50 p-4 rounded-3xl space-y-1">
                       <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Departure</p>
@@ -320,7 +320,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
                 />
                 <div>
                   <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Driver</p>
-                  <h4 className="font-black text-black">Ahmad Bello</h4>
+                  <h4 className="font-black text-black">{confirmedTrip.driver_name || 'Ahmad Bello'}</h4>
                   <p className="text-[10px] text-emerald-600 font-bold">Verified Owner</p>
                 </div>
               </div>
@@ -328,8 +328,8 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
               <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-200/50">
                 <div>
                   <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Vehicle</p>
-                  <p className="font-black text-xs">Toyota Corolla</p>
-                  <p className="text-[10px] text-slate-500 font-bold">KTN-402</p>
+                  <p className="font-black text-xs">{confirmedTrip.car_details || 'Toyota Corolla'}</p>
+                  <p className="text-[10px] text-slate-500 font-bold">Verified</p>
                 </div>
                 <div>
                   <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Departure</p>

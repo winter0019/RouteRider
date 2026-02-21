@@ -1,15 +1,16 @@
 
 import React, { useState } from 'react';
-import { Trip, TripStatus } from '../types';
+import { Trip, TripStatus, DriverProfile } from '../types';
 import { ROUTES, COLORS, ICONS } from '../constants';
 
 interface TripPostingProps {
   onPost: (trip: Trip) => void;
   activeTrip: Trip | null;
   onNavigate: (page: any) => void;
+  profile: DriverProfile;
 }
 
-const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigate }) => {
+const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigate, profile }) => {
   const [origin, setOrigin] = useState('Katsina');
   const [destination, setDestination] = useState('Kano');
   const [departureTime, setDepartureTime] = useState('07:00');
@@ -34,7 +35,9 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
 
       const newTrip: Trip = {
         trip_id: Math.random().toString(36).substr(2, 9),
-        driver_id: 'driver-123',
+        driver_id: profile.user_id,
+        driver_name: profile.full_name,
+        car_details: `${profile.car_make} ${profile.car_model} (${profile.plate_number})`,
         route: `${origin} → ${destination}`,
         departure_time: depTime.toISOString(),
         seats_available: seats,

@@ -267,6 +267,7 @@ const App: React.FC = () => {
             onPost={handlePostTrip}
             activeTrip={activeTrip}
             onNavigate={setCurrentPage}
+            profile={profile!}
           />
         );
       case "bookings":
