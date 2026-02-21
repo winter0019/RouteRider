@@ -1,187 +1,183 @@
-import React, { useMemo, useState } from "react";
-import { Trip, TripStatus } from "../types";
-import { ICONS, ROUTES } from "../constants";
 
-type Page = "dashboard" | "post-trip" | "bookings" | "wallet" | "settings" | "search";
+import React, { useState } from 'react';
+import { Trip, TripStatus } from '../types';
+import { ROUTES, COLORS, ICONS } from '../constants';
 
 interface TripPostingProps {
-  onPost: (trip: Trip) => Promise<void> | void;
+  onPost: (trip: Trip) => void;
   activeTrip: Trip | null;
-  onNavigate: (page: Page) => void;
+  onNavigate: (page: any) => void;
 }
 
-const toISOFromDateTime = (dateStr: string, timeStr: string) => {
-  // dateStr: "2026-02-20", timeStr: "08:00"
-  if (!dateStr || !timeStr) return new Date().toISOString();
-  const dt = new Date(`${dateStr}T${timeStr}:00`);
-  if (Number.isNaN(dt.getTime())) return new Date().toISOString();
-  return dt.toISOString();
-};
-
 const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigate }) => {
-  const [origin, setOrigin] = useState("");
-  const [destination, setDestination] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [time, setTime] = useState("08:00");
-  const [seats, setSeats] = useState<number>(2);
-  const [pricePerSeat, setPricePerSeat] = useState<number>(ROUTES.SUGGESTED_PRICE_PER_SEAT);
+  const [origin, setOrigin] = useState('Katsina');
+  const [destination, setDestination] = useState('Kano');
+  const [departureTime, setDepartureTime] = useState('07:00');
+  const [seats, setSeats] = useState(3);
+  const [isPosting, setIsPosting] = useState(false);
 
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const canSubmit = useMemo(() => {
-    return origin.trim().length > 1 && destination.trim().length > 1 && seats > 0 && pricePerSeat > 0;
-  }, [origin, destination, seats, pricePerSeat]);
-
-  const handleSubmit = async () => {
-    if (!canSubmit) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const departure_time = toISOFromDateTime(date, time);
-
-      const trip: Trip = {
-        trip_id: "t-" + Math.random().toString(36).slice(2, 9),
-        driver_id: "driver", // backend/firestore will override if needed
-        origin: origin.trim(),
-        destination: destination.trim(),
-        route: `${origin.trim()} → ${destination.trim()}`,
-        departure_time,
-        seats_available: Number(seats),
-        seats_booked: 0,
-        status: TripStatus.POSTED,
-        bookedBy: [],
-        price_per_seat: Number(pricePerSeat),
-        created_at: new Date().toISOString(),
-      };
-
-      await onPost(trip);
-      onNavigate("dashboard");
-    } catch (e: any) {
-      console.error(e);
-      setError(e?.message || "Failed to post trip. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+  const handleSwap = () => {
+    const temp = origin;
+    setOrigin(destination);
+    setDestination(temp);
   };
 
-  // If driver already has an active trip, show it instead of allowing duplicates (optional)
+  const handlePost = () => {
+    if (!origin || !destination) return alert("Please enter both origin and destination");
+    setIsPosting(true);
+    
+    setTimeout(() => {
+      const now = new Date();
+      const depTime = new Date();
+      const [hours, minutes] = departureTime.split(':');
+      depTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+
+      const newTrip: Trip = {
+        trip_id: Math.random().toString(36).substr(2, 9),
+        driver_id: 'driver-123',
+        route: `${origin} → ${destination}`,
+        departure_time: depTime.toISOString(),
+        seats_available: seats,
+        seats_booked: 0,
+        status: TripStatus.POSTED,
+        earnings: 0,
+        created_at: now.toISOString(),
+      };
+      
+      onPost(newTrip);
+      setIsPosting(false);
+    }, 1200);
+  };
+
   if (activeTrip) {
     return (
-      <div className="space-y-6 text-slate-900">
-        <header className="space-y-1">
-          <h2 className="text-2xl font-black">Your Active Trip</h2>
-          <p className="text-slate-500 text-sm font-bold">
-            You already have a posted trip. Complete it before posting a new one.
-          </p>
-        </header>
-
-        <div className="bg-white border-2 border-slate-100 rounded-3xl p-5 space-y-3">
-          <div className="font-black text-lg">{activeTrip.origin} → {activeTrip.destination}</div>
-          <div className="text-xs text-slate-500 font-bold">
-            Seats: {Number(activeTrip.seats_booked ?? 0)}/{Number(activeTrip.seats_available ?? 0)}
-          </div>
-          <div className="text-xs text-slate-500 font-bold">
-            Departure: {new Date(activeTrip.departure_time).toLocaleString()}
-          </div>
-          <div className="text-[10px] inline-flex px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 font-black uppercase">
-            {String(activeTrip.status)}
-          </div>
+      <div className="flex flex-col items-center justify-center h-[70vh] text-center p-6 space-y-6 animate-in fade-in duration-500">
+        <div className="w-24 h-24 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-2 shadow-inner border-4 border-emerald-50">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
         </div>
-
-        <button
-          onClick={() => onNavigate("bookings")}
-          className="w-full bg-emerald-600 text-white p-5 rounded-2xl font-black text-lg"
-        >
-          Go to Bookings
-        </button>
+        <h2 className="text-3xl font-black text-black tracking-tight">Trip is Live!</h2>
+        <p className="text-gray-600 font-bold leading-relaxed max-w-[280px]">
+          You're set for <strong>{activeTrip.route}</strong> at <strong>{new Date(activeTrip.departure_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong>.
+        </p>
+        <div className="w-full pt-6 space-y-4">
+          <button 
+            onClick={() => onNavigate('dashboard')}
+            className="block w-full bg-emerald-600 text-white py-5 rounded-2xl font-black shadow-2xl shadow-emerald-200 text-lg hover:scale-[1.02] active:scale-95 transition-all"
+          >
+            Dashboard
+          </button>
+          <button 
+            onClick={() => onNavigate('bookings')}
+            className="block w-full bg-slate-50 text-black py-5 rounded-2xl font-black border-2 border-slate-100 hover:bg-slate-100 transition-all"
+          >
+            View Bookings
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 text-slate-900">
-      <header className="space-y-1">
-        <h2 className="text-2xl font-black">Post a Trip</h2>
-        <p className="text-slate-500 text-sm font-bold">Create a ride so passengers can book.</p>
+    <div className="space-y-8 text-black">
+      <header>
+        <h2 className="text-2xl font-black text-black">Post New Trip</h2>
+        <p className="text-gray-600 font-bold">Where are you heading today?</p>
       </header>
 
-      {error && (
-        <div className="bg-red-50 border border-red-100 p-4 rounded-2xl text-red-600 font-bold">
-          {error}
-        </div>
-      )}
-
-      <section className="bg-white border-2 border-slate-100 p-5 rounded-[2rem] space-y-4">
-        <div className="space-y-3">
-          <input
-            value={origin}
-            onChange={(e) => setOrigin(e.target.value)}
-            placeholder="From (Origin) e.g. Daura"
-            className="w-full px-4 py-4 bg-slate-50 border-2 border-transparent focus:border-emerald-500 rounded-2xl font-black text-sm outline-none"
-          />
-
-          <input
-            value={destination}
-            onChange={(e) => setDestination(e.target.value)}
-            placeholder="To (Destination) e.g. Katsina"
-            className="w-full px-4 py-4 bg-slate-50 border-2 border-transparent focus:border-emerald-500 rounded-2xl font-black text-sm outline-none"
-          />
-
-          <div className="grid grid-cols-2 gap-3">
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full px-4 py-4 bg-slate-50 border-2 border-transparent focus:border-emerald-500 rounded-2xl font-black text-sm outline-none"
-            />
-            <input
-              type="time"
-              value={time}
-              onChange={(e) => setTime(e.target.value)}
-              className="w-full px-4 py-4 bg-slate-50 border-2 border-transparent focus:border-emerald-500 rounded-2xl font-black text-sm outline-none"
-            />
+      <div className="space-y-6">
+        {/* Route Inputs */}
+        <div className="space-y-3 relative">
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Starting From</label>
+            <div className="flex items-center gap-3 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl">
+              <div className="text-emerald-500"><MapPin size={20} /></div>
+              <input 
+                placeholder="Origin (e.g. Daura)"
+                value={origin}
+                onChange={(e) => setOrigin(e.target.value)}
+                className="bg-transparent w-full font-black text-black outline-none placeholder:text-gray-300"
+              />
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <input
-              type="number"
-              min={1}
-              value={seats}
-              onChange={(e) => setSeats(Number(e.target.value || 0))}
-              placeholder="Seats"
-              className="w-full px-4 py-4 bg-slate-50 border-2 border-transparent focus:border-emerald-500 rounded-2xl font-black text-sm outline-none"
-            />
-            <input
-              type="number"
-              min={100}
-              value={pricePerSeat}
-              onChange={(e) => setPricePerSeat(Number(e.target.value || 0))}
-              placeholder="Price per seat"
-              className="w-full px-4 py-4 bg-slate-50 border-2 border-transparent focus:border-emerald-500 rounded-2xl font-black text-sm outline-none"
-            />
+          <button 
+            onClick={handleSwap}
+            className="absolute right-4 top-1/2 -translate-y-1/2 mt-1 z-10 w-10 h-10 bg-white border-2 border-slate-100 rounded-full flex items-center justify-center text-emerald-600 shadow-sm active:rotate-180 transition-transform duration-300"
+          >
+            {ICONS.Swap}
+          </button>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Destination</label>
+            <div className="flex items-center gap-3 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl">
+              <div className="text-emerald-500"><MapPin size={20} /></div>
+              <input 
+                placeholder="Where to? (e.g. Kano)"
+                value={destination}
+                onChange={(e) => setDestination(e.target.value)}
+                className="bg-transparent w-full font-black text-black outline-none placeholder:text-gray-300"
+              />
+            </div>
           </div>
         </div>
 
-        <button
-          onClick={handleSubmit}
-          disabled={!canSubmit || loading}
-          className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-emerald-100 flex items-center justify-center gap-2 disabled:opacity-60"
+        {/* Departure Time */}
+        <div className="space-y-2">
+          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Departure Time</label>
+          <input 
+            type="time" 
+            value={departureTime}
+            onChange={(e) => setDepartureTime(e.target.value)}
+            className="w-full p-5 bg-white border-2 border-slate-200 rounded-2xl text-xl font-black text-black focus:outline-none focus:ring-4 focus:ring-emerald-500/20 transition-all"
+          />
+        </div>
+
+        {/* Seats Selector */}
+        <div className="space-y-2">
+          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Available Seats</label>
+          <div className="flex gap-3">
+            {[1, 2, 3, 4].map(n => (
+              <button 
+                key={n}
+                onClick={() => setSeats(n)}
+                className={`flex-1 p-5 rounded-2xl font-black text-2xl transition-all ${
+                  seats === n 
+                  ? `${COLORS.primary} text-white border-transparent shadow-2xl shadow-emerald-200 scale-105` 
+                  : 'bg-white border-2 text-gray-400 border-slate-100'
+                }`}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button 
+          onClick={handlePost}
+          disabled={isPosting || !origin || !destination}
+          className={`w-full ${COLORS.primary} text-white p-5 rounded-2xl font-black text-xl shadow-2xl shadow-emerald-200 hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-3 mt-6 disabled:opacity-50`}
         >
-          {loading ? (
-            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          {isPosting ? (
+            <div className="w-7 h-7 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
           ) : (
             <>
-              {ICONS?.Post ?? null}
+              {ICONS.Post}
               Post Trip
             </>
           )}
         </button>
-      </section>
+      </div>
     </div>
   );
 };
+
+const MapPin: React.FC<{ size?: number, className?: string }> = ({ size = 20, className = "" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+    <circle cx="12" cy="10" r="3" />
+  </svg>
+);
 
 export default TripPosting;

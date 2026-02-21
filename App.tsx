@@ -1,4 +1,3 @@
-// App.tsx
 import React, { useEffect, useState, useCallback } from "react";
 import {
   BookingStatus,
@@ -167,10 +166,14 @@ const App: React.FC = () => {
 
       // local “booking record” for UI
       const mockBooking: Booking = {
-        id: Date.now(),
+        booking_id: 'b-' + Math.random().toString(36).substr(2, 5),
         trip_id: trip.trip_id,
-        seats: 1,
-        amount_paid: Number(trip.price_per_seat ?? ROUTES.SUGGESTED_PRICE_PER_SEAT),
+        passenger_id: auth?.currentUser?.uid || 'guest',
+        passenger_name: profile?.full_name || 'Anonymous',
+        passenger_rating: 5.0,
+        passenger_trips: 0,
+        seats_booked: 1,
+        amount_paid: ROUTES.SUGGESTED_PRICE_PER_SEAT,
         status: BookingStatus.ACCEPTED,
         created_at: new Date().toISOString(),
       };

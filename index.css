@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  html {
+    background-color: #f8fafc;
+    color: #000000;
+  }
+  body {
+    font-family: var(--font-sans);
+    background-color: #f8fafc;
+    color: #000000;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+  }
+}
