@@ -29,6 +29,7 @@ const App: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [profile, setProfile] = useState<DriverProfile | null>(null);
   const [globalError, setGlobalError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [allAvailableTrips, setAllAvailableTrips] = useState<Trip[]>([]);
   const [activeTrip, setActiveTrip] = useState<Trip | null>(null);
@@ -65,6 +66,27 @@ const App: React.FC = () => {
   };
 
   // -------------------------
+  // Logout
+  // -------------------------
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem("rr_profile");
+    localStorage.removeItem("rr_role");
+    localStorage.removeItem("rr_active_trip");
+    localStorage.removeItem("rr_bookings");
+    localStorage.removeItem("rr_transactions");
+
+    setIsLoggedIn(false);
+    setProfile(null);
+    setUserRole(null);
+
+    persistActiveTrip(null);
+    persistBookings([]);
+    persistTransactions([]);
+
+    setCurrentPage("dashboard");
+  }, []);
+
+  // -------------------------
   // Firestore refresh (source of truth)
   // -------------------------
   const refreshTripsFromBackend = useCallback(async () => {
@@ -98,6 +120,7 @@ const App: React.FC = () => {
   // Initial load + sync
   // -------------------------
   useEffect(() => {
+    // 1. Try loading from localStorage first (fastest)
     const savedProfile = localStorage.getItem("rr_profile");
     const savedRole = localStorage.getItem("rr_role") as UserRole | null;
 
@@ -107,23 +130,77 @@ const App: React.FC = () => {
     const savedTransactions = localStorage.getItem("rr_transactions");
 
     if (savedProfile && savedRole) {
-      setProfile(JSON.parse(savedProfile));
+      const p = JSON.parse(savedProfile);
+      setProfile(p);
       setUserRole(savedRole);
       setIsLoggedIn(true);
       if (savedRole === "passenger") setCurrentPage("search");
+      refreshTripsFromBackend();
     }
 
-    // show cached data immediately (fast)
     if (savedTrips) setAllAvailableTrips(JSON.parse(savedTrips));
     if (savedActiveTrip) setActiveTrip(JSON.parse(savedActiveTrip));
     if (savedBookings) setBookings(JSON.parse(savedBookings));
     if (savedTransactions) setTransactions(JSON.parse(savedTransactions));
-
-    // then refresh from Firestore if logged in
-    if (savedProfile && savedRole) {
-      refreshTripsFromBackend();
-    }
   }, [refreshTripsFromBackend]);
+
+  // 2. Listen for Auth changes to handle cross-device or cleared cache
+  useEffect(() => {
+    const unsubscribe = auth?.onAuthStateChanged(async (user) => {
+      if (user) {
+        // Use a functional update or check state via ref if needed, 
+        // but here we just want to fetch if we don't have it yet.
+        // We'll check the current profile state.
+        setProfile(prev => {
+          if (!prev) {
+            firestoreService.getUserProfile(user.uid).then(firestoreProfile => {
+              if (firestoreProfile) {
+                const p: DriverProfile = {
+                  user_id: user.uid,
+                  full_name: firestoreProfile.full_name,
+                  phone_number: firestoreProfile.phone_number || firestoreProfile.phone || 'N/A',
+                  car_make: firestoreProfile.car_make || 'N/A',
+                  car_model: firestoreProfile.car_model || 'N/A',
+                  car_color: firestoreProfile.car_color || 'Standard',
+                  plate_number: firestoreProfile.plate_number || 'N/A',
+                  verification_status: firestoreProfile.verification_status || { phone: true, id: true, first_trip: false },
+                  rating: firestoreProfile.rating || 5.0,
+                  trip_count: firestoreProfile.trip_count || 0,
+                  wallet_balance: firestoreProfile.wallet_balance || 0,
+                  total_earnings: firestoreProfile.total_earnings || 0,
+                  profile_photo_url: firestoreProfile.profile_photo_url
+                };
+                const role = (firestoreProfile.userType || 'passenger') as UserRole;
+                
+                setProfile(p);
+                setUserRole(role);
+                setIsLoggedIn(true);
+                
+                localStorage.setItem("rr_profile", JSON.stringify(p));
+                localStorage.setItem("rr_role", role);
+                
+                if (role === "passenger") setCurrentPage("search");
+                refreshTripsFromBackend();
+              }
+            }).catch(error => {
+              console.error("Error fetching profile from Firestore:", error);
+            });
+          }
+          return prev;
+        });
+      } else {
+        setIsLoggedIn(prev => {
+          if (prev) {
+            handleLogout();
+          }
+          return false;
+        });
+      }
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe?.();
+  }, [refreshTripsFromBackend, handleLogout]);
 
   // Sync bookings for driver
   useEffect(() => {
@@ -147,29 +224,6 @@ const App: React.FC = () => {
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [isLoggedIn, userRole, refreshTripsFromBackend, refreshBookingsFromBackend]);
-
-  // -------------------------
-  // Logout
-  // -------------------------
-  const handleLogout = () => {
-    localStorage.removeItem("rr_profile");
-    localStorage.removeItem("rr_role");
-    localStorage.removeItem("rr_active_trip");
-    localStorage.removeItem("rr_bookings");
-    localStorage.removeItem("rr_transactions");
-    // optional:
-    // localStorage.removeItem("rr_all_trips");
-
-    setIsLoggedIn(false);
-    setProfile(null);
-    setUserRole(null);
-
-    persistActiveTrip(null);
-    persistBookings([]);
-    persistTransactions([]);
-
-    setCurrentPage("dashboard");
-  };
 
   // -------------------------
   // Driver: Post Trip
@@ -219,6 +273,16 @@ const App: React.FC = () => {
   // -------------------------
   // Onboarding
   // -------------------------
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-white">
+        <div className="w-12 h-12 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <h2 className="text-xl font-black text-emerald-900">RouteRider</h2>
+        <p className="text-gray-500 font-bold">Loading your profile...</p>
+      </div>
+    );
+  }
+
   if (!isLoggedIn) {
     return (
       <ProfileOnboarding

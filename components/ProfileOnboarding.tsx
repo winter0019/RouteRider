@@ -18,8 +18,8 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
   
   const [formData, setFormData] = useState({
     full_name: '',
-    email: '',
-    phone: '',
+    email: auth?.currentUser?.email || '',
+    phone: auth?.currentUser?.phoneNumber || '',
     car_make: '',
     car_model: '',
     plate_number: '',
@@ -27,6 +27,16 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleRoleSelect = (selectedRole: 'driver' | 'passenger') => {
+    setRole(selectedRole);
+    // If already authenticated, skip step 0 (AuthVerification)
+    if (auth?.currentUser) {
+      setStep(1);
+    } else {
+      setStep(0);
+    }
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -89,7 +99,7 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
             
             <div className="w-full space-y-4">
               <button 
-                onClick={() => { setRole('driver'); setStep(0); }}
+                onClick={() => handleRoleSelect('driver')}
                 className="w-full p-6 bg-white border-2 border-slate-100 rounded-3xl flex items-center gap-4 hover:border-emerald-500 transition-all text-left group"
               >
                 <div className="p-4 bg-emerald-50 text-emerald-600 rounded-2xl group-hover:scale-110 transition-all">{ICONS.Car}</div>
@@ -100,7 +110,7 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
               </button>
 
               <button 
-                onClick={() => { setRole('passenger'); setStep(0); }}
+                onClick={() => handleRoleSelect('passenger')}
                 className="w-full p-6 bg-white border-2 border-slate-100 rounded-3xl flex items-center gap-4 hover:border-emerald-500 transition-all text-left group"
               >
                 <div className="p-4 bg-amber-50 text-amber-600 rounded-2xl group-hover:scale-110 transition-all">{ICONS.User}</div>
