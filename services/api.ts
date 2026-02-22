@@ -2,6 +2,7 @@
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   addDoc,
   updateDoc,
@@ -143,6 +144,21 @@ export const api = {
     } catch (err) {
       console.error("Firestore Error (getTrips):", err);
       return [];
+    }
+  },
+
+  async getTrip(tripId: string, source: "rides" | "trips" = "rides"): Promise<Trip | null> {
+    if (!db) return null;
+    try {
+      const col = source === "trips" ? TRIPS_COL : RIDES_COL;
+      const snap = await getDoc(doc(db, col, tripId));
+      if (!snap.exists()) return null;
+      return source === "trips" 
+        ? mapTripDocToTrip(snap.id, snap.data())
+        : mapRideDocToTrip(snap.id, snap.data());
+    } catch (err) {
+      console.error("Firestore Error (getTrip):", err);
+      return null;
     }
   },
 
@@ -306,6 +322,29 @@ export const api = {
   async getBookingsForTrip(tripId: string): Promise<Booking[]> {
     if (!db) return [];
     const q = query(collection(db, BOOKINGS_COL), where("trip_id", "==", tripId));
+    const snap = await getDocs(q);
+
+    return snap.docs.map((d) => {
+      const data: any = d.data();
+      return {
+        booking_id: d.id,
+        trip_id: data.trip_id,
+        passenger_id: data.passenger_id,
+        passenger_name: data.passenger_name,
+        passenger_photo: data.passenger_photo,
+        passenger_rating: data.passenger_rating || 5.0,
+        passenger_trips: data.passenger_trips || 0,
+        seats_booked: data.seats_booked,
+        amount_paid: data.amount_paid,
+        status: data.status,
+        created_at: toISO(data.createdAt),
+      } as Booking;
+    });
+  },
+
+  async getBookingsForUser(userId: string): Promise<Booking[]> {
+    if (!db) return [];
+    const q = query(collection(db, BOOKINGS_COL), where("passenger_id", "==", userId));
     const snap = await getDocs(q);
 
     return snap.docs.map((d) => {

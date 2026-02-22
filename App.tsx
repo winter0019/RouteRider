@@ -105,8 +105,16 @@ const App: React.FC = () => {
   const refreshBookingsFromBackend = useCallback(async () => {
     if (!activeTrip) return;
     try {
+      // 1. Refresh bookings
       const backendBookings = await api.getBookingsForTrip(activeTrip.trip_id);
       persistBookings(backendBookings);
+
+      // 2. Refresh the active trip itself to get latest seat count
+      const updatedTrip = await api.getTrip(activeTrip.trip_id, activeTrip.source as any);
+      if (updatedTrip) {
+        persistActiveTrip(updatedTrip);
+      }
+
       setGlobalError(null);
     } catch (error: any) {
       console.error("Failed to refresh bookings:", error);
@@ -115,6 +123,17 @@ const App: React.FC = () => {
       }
     }
   }, [activeTrip]);
+
+  const refreshUserBookingsFromBackend = useCallback(async () => {
+    if (!profile?.user_id) return;
+    try {
+      const backendBookings = await api.getBookingsForUser(profile.user_id);
+      persistBookings(backendBookings);
+      setGlobalError(null);
+    } catch (error: any) {
+      console.error("Failed to refresh user bookings:", error);
+    }
+  }, [profile?.user_id]);
 
   // -------------------------
   // Initial load + sync
@@ -211,6 +230,15 @@ const App: React.FC = () => {
     }
   }, [userRole, activeTrip, isLoggedIn, refreshBookingsFromBackend]);
 
+  // Sync bookings for passenger
+  useEffect(() => {
+    if (userRole === 'passenger' && isLoggedIn) {
+      refreshUserBookingsFromBackend();
+      const interval = setInterval(refreshUserBookingsFromBackend, 10000); // Poll every 10s
+      return () => clearInterval(interval);
+    }
+  }, [userRole, isLoggedIn, refreshUserBookingsFromBackend]);
+
   // optional: refresh when tab becomes active
   useEffect(() => {
     const onFocus = () => {
@@ -218,12 +246,14 @@ const App: React.FC = () => {
         refreshTripsFromBackend();
         if (userRole === 'driver') {
           refreshBookingsFromBackend();
+        } else {
+          refreshUserBookingsFromBackend();
         }
       }
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [isLoggedIn, userRole, refreshTripsFromBackend, refreshBookingsFromBackend]);
+  }, [isLoggedIn, userRole, refreshTripsFromBackend, refreshBookingsFromBackend, refreshUserBookingsFromBackend]);
 
   // -------------------------
   // Driver: Post Trip
