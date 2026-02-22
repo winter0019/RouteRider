@@ -100,10 +100,23 @@ service cloud.firestore {
     // BOOKINGS /bookings/{bookingId}
     // =============================
     match /bookings/{bookingId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null;
-      allow update: if request.auth != null;
-      allow delete: if request.auth != null;
+      // Allow user to read if they are the passenger OR the driver of the trip
+      allow read: if request.auth != null && (
+        request.auth.uid == resource.data.passenger_id || 
+        request.auth.uid == resource.data.driver_id
+      );
+      
+      allow create: if request.auth != null && request.resource.data.passenger_id == request.auth.uid;
+      
+      allow update: if request.auth != null && (
+        request.auth.uid == resource.data.passenger_id || 
+        request.auth.uid == resource.data.driver_id
+      );
+      
+      allow delete: if request.auth != null && (
+        request.auth.uid == resource.data.passenger_id || 
+        request.auth.uid == resource.data.driver_id
+      );
     }
 
     // =============================

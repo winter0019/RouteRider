@@ -301,6 +301,7 @@ export const api = {
 
     const booking: any = {
       trip_id: String(bookingData.trip_id),
+      driver_id: String(bookingData.driver_id), // Added driver_id for security rules
       passenger_id: auth.currentUser.uid,
       passenger_name: bookingData.passenger_name || "Passenger",
       passenger_photo:
@@ -319,6 +320,7 @@ export const api = {
     return {
       booking_id: ref.id,
       trip_id: booking.trip_id,
+      driver_id: booking.driver_id,
       passenger_id: booking.passenger_id,
       passenger_name: booking.passenger_name,
       passenger_photo: booking.passenger_photo,
@@ -341,6 +343,7 @@ export const api = {
       return {
         booking_id: d.id,
         trip_id: data.trip_id,
+        driver_id: data.driver_id,
         passenger_id: data.passenger_id,
         passenger_name: data.passenger_name,
         passenger_photo: data.passenger_photo,
@@ -364,6 +367,7 @@ export const api = {
       return {
         booking_id: d.id,
         trip_id: data.trip_id,
+        driver_id: data.driver_id,
         passenger_id: data.passenger_id,
         passenger_name: data.passenger_name,
         passenger_photo: data.passenger_photo,

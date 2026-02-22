@@ -239,7 +239,7 @@ const App: React.FC = () => {
         refreshTripsFromBackend();
         if (userRole === 'driver') {
           refreshBookingsFromBackend();
-        } else {
+        } else if (userRole === 'passenger') {
           refreshUserBookingsFromBackend();
         }
       }
@@ -275,13 +275,14 @@ const App: React.FC = () => {
       // Create real booking in Firestore
       const newBooking = await api.createBooking({
         trip_id: trip.trip_id,
+        driver_id: trip.driver_id || trip.carOwnerId, // Pass driver_id for security rules
         passenger_name: profile?.full_name || 'Anonymous',
         passenger_photo: profile?.profile_photo_url,
         amount_paid: ROUTES.SUGGESTED_PRICE_PER_SEAT,
       });
 
       // Also update the ride's bookedBy list (legacy support/simple count)
-      await api.bookTrip(trip.trip_id);
+      await api.bookTrip(trip.trip_id, trip.source as any);
 
       // refresh so seat counts update immediately
       await refreshTripsFromBackend();

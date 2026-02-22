@@ -61,6 +61,7 @@ export interface Trip {
 export interface Booking {
   booking_id: string;
   trip_id: string;
+  driver_id: string;
   passenger_id: string;
   passenger_name: string;
   passenger_photo?: string;

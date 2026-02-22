@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { DriverProfile, Trip, Booking, TripStatus } from '../types';
+import { DriverProfile, Trip, Booking, TripStatus, BookingStatus } from '../types';
 import { ICONS, COLORS, ROUTES } from '../constants';
 import { getDriverInsights } from '../services/geminiService';
 
@@ -23,6 +23,12 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, activeTrip, bookings, on
   }, [profile.total_earnings]);
 
   const fuelOffsetPercent = Math.min(100, Math.round((profile.total_earnings / 80000) * 100));
+
+  // Derive seat counts from bookings for real-time accuracy
+  const acceptedCount = bookings.filter(b => b.status === BookingStatus.ACCEPTED).length;
+  const pendingCount = bookings.filter(b => b.status === BookingStatus.PENDING).length;
+  const totalBooked = acceptedCount + pendingCount; // Reserved seats
+  const seatsAvailable = activeTrip?.seats_available || 0;
 
   return (
     <div className="space-y-6 text-black">
@@ -87,20 +93,32 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, activeTrip, bookings, on
             
             <div className="flex items-center gap-3">
               <div className="flex -space-x-2">
-                {[...Array(activeTrip.seats_booked)].map((_, i) => (
-                  <div key={i} className="w-8 h-8 rounded-full border-2 border-white bg-emerald-100 flex items-center justify-center text-emerald-700">
+                {[...Array(acceptedCount)].map((_, i) => (
+                  <div key={`acc-${i}`} className="w-8 h-8 rounded-full border-2 border-white bg-emerald-500 flex items-center justify-center text-white shadow-sm">
                     {ICONS.User}
                   </div>
                 ))}
-                {[...Array(activeTrip.seats_available - activeTrip.seats_booked)].map((_, i) => (
-                  <div key={i} className="w-8 h-8 rounded-full border-2 border-white bg-slate-100 flex items-center justify-center text-slate-300">
+                {[...Array(pendingCount)].map((_, i) => (
+                  <div key={`pen-${i}`} className="w-8 h-8 rounded-full border-2 border-white bg-amber-100 flex items-center justify-center text-amber-600 animate-pulse">
+                    {ICONS.User}
+                  </div>
+                ))}
+                {[...Array(Math.max(0, seatsAvailable - totalBooked))].map((_, i) => (
+                  <div key={`empty-${i}`} className="w-8 h-8 rounded-full border-2 border-white bg-slate-100 flex items-center justify-center text-slate-300">
                     {ICONS.User}
                   </div>
                 ))}
               </div>
-              <p className="text-sm font-black text-gray-700">
-                {activeTrip.seats_booked}/{activeTrip.seats_available} seats filled
-              </p>
+              <div className="flex flex-col">
+                <p className="text-sm font-black text-gray-700">
+                  {acceptedCount}/{seatsAvailable} seats confirmed
+                </p>
+                {pendingCount > 0 && (
+                  <p className="text-[10px] text-amber-600 font-bold uppercase tracking-tight">
+                    {pendingCount} pending request{pendingCount > 1 ? 's' : ''}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         ) : (

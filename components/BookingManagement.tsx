@@ -42,7 +42,8 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
       setBookings(updatedBookings);
 
       if (action === 'accept' && activeTrip) {
-        const isFull = (activeTrip.seats_booked) >= activeTrip.seats_available;
+        const newSeatsBooked = activeTrip.seats_booked; // Already incremented by passenger
+        const isFull = newSeatsBooked >= activeTrip.seats_available;
         const newTripStatus = isFull ? TripStatus.IN_PROGRESS : TripStatus.POSTED;
         
         if (newTripStatus !== activeTrip.status) {
@@ -51,7 +52,13 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
 
         setActiveTrip({
           ...activeTrip,
-          status: newTripStatus
+          status: newTripStatus,
+          seats_booked: newSeatsBooked
+        });
+      } else if (action === 'reject' && activeTrip) {
+        setActiveTrip({
+          ...activeTrip,
+          seats_booked: Math.max(0, activeTrip.seats_booked - 1)
         });
       }
     } catch (error) {

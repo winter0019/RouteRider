@@ -4,6 +4,7 @@ import { DriverProfile } from '../types';
 import { COLORS, ICONS } from '../constants';
 import { verifyDocument } from '../services/geminiService';
 import { auth } from '../services/firebase';
+import { firestoreService } from '../services/firestoreService';
 import AuthVerification from './AuthVerification';
 
 interface ProfileOnboardingProps {
@@ -45,10 +46,10 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
     const reader = new FileReader();
     reader.onloadend = async () => {
       const base64String = reader.result as string;
-      setFormData({ ...formData, nin_image: base64String });
+      setFormData(prev => ({ ...prev, nin_image: base64String }));
       setIsVerifying(true);
       
-      const result = await verifyDocument(base64String, 'nin');
+      const result = await verifyDocument(base64String, 'nin', formData.full_name);
       setVerificationResult(result);
       setIsVerifying(false);
     };
@@ -125,12 +126,44 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
 
         {step === 0 && (
           <AuthVerification 
-            onVerified={(identifier) => {
+            onVerified={async (identifier) => {
               if (identifier.includes('@')) {
-                setFormData({ ...formData, email: identifier });
+                setFormData(prev => ({ ...prev, email: identifier }));
               } else {
-                setFormData({ ...formData, phone: identifier });
+                setFormData(prev => ({ ...prev, phone: identifier }));
               }
+              
+              // Check if user already has a profile in Firestore
+              if (auth?.currentUser) {
+                setIsVerifying(true);
+                try {
+                  const existingProfile = await firestoreService.getUserProfile(auth.currentUser.uid);
+                  if (existingProfile) {
+                    // Returning user found! Complete onboarding immediately.
+                    onComplete({
+                      user_id: auth.currentUser.uid,
+                      full_name: existingProfile.full_name,
+                      phone_number: existingProfile.phone_number || existingProfile.phone || 'N/A',
+                      car_make: existingProfile.car_make || 'N/A',
+                      car_model: existingProfile.car_model || 'N/A',
+                      car_color: existingProfile.car_color || 'Standard',
+                      plate_number: existingProfile.plate_number || 'N/A',
+                      verification_status: existingProfile.verification_status || { phone: true, id: true, first_trip: false },
+                      rating: existingProfile.rating || 5.0,
+                      trip_count: existingProfile.trip_count || 0,
+                      wallet_balance: existingProfile.wallet_balance || 0,
+                      total_earnings: existingProfile.total_earnings || 0,
+                      profile_photo_url: existingProfile.profile_photo_url
+                    }, existingProfile.userType || 'passenger');
+                    return;
+                  }
+                } catch (err) {
+                  console.error("Error checking existing profile:", err);
+                } finally {
+                  setIsVerifying(false);
+                }
+              }
+              
               setStep(1);
             }} 
             onBack={() => setStep(-1)}
