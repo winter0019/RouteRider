@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { DriverProfile } from '../types';
 import { ICONS, COLORS } from '../constants';
 
@@ -12,11 +12,14 @@ interface SettingsProps {
 
 const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate, userRole }) => {
   const [isEditing, setIsEditing] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [editData, setEditData] = useState({
     full_name: profile.full_name,
     car_make: profile.car_make,
     car_model: profile.car_model,
-    plate_number: profile.plate_number
+    plate_number: profile.plate_number,
+    profile_photo_url: profile.profile_photo_url
   });
 
   const handleSave = () => {
@@ -24,6 +27,20 @@ const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate, us
       onUpdate({ ...profile, ...editData });
     }
     setIsEditing(false);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      setEditData(prev => ({ ...prev, profile_photo_url: base64String }));
+      setIsUploading(false);
+    };
+    reader.readAsDataURL(file);
   };
 
   const isDriver = userRole === 'driver';
@@ -46,30 +63,63 @@ const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate, us
       </header>
 
       {isEditing ? (
-        <div className="bg-white border-2 border-slate-100 p-6 rounded-3xl space-y-4 shadow-sm animate-in slide-in-from-top-2">
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-gray-400 uppercase">Full Name</label>
-            <input value={editData.full_name} onChange={e => setEditData({...editData, full_name: e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl font-black border-2 border-transparent focus:border-emerald-500 outline-none" />
+        <div className="bg-white border-2 border-slate-100 p-6 rounded-3xl space-y-6 shadow-sm animate-in slide-in-from-top-2">
+          <div className="flex flex-col items-center gap-4">
+            <div className="relative group">
+              <div className="w-24 h-24 rounded-3xl bg-slate-100 overflow-hidden border-4 border-white shadow-md">
+                <img 
+                  src={editData.profile_photo_url || `https://picsum.photos/150/150?seed=${profile.user_id}`} 
+                  alt="Profile" 
+                  className="w-full h-full object-cover" 
+                />
+                {isUploading && (
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                    <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                )}
+              </div>
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute -bottom-2 -right-2 w-10 h-10 bg-emerald-600 text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-all"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              </button>
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                className="hidden" 
+                accept="image/*" 
+                onChange={handleFileChange} 
+              />
+            </div>
+            <p className="text-[10px] font-black text-gray-400 uppercase">Tap icon to change photo</p>
           </div>
-          
-          {isDriver && (
-            <>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-gray-400 uppercase">Make</label>
-                  <input value={editData.car_make} onChange={e => setEditData({...editData, car_make: e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl font-black" />
+
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-gray-400 uppercase">Full Name</label>
+              <input value={editData.full_name} onChange={e => setEditData({...editData, full_name: e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl font-black border-2 border-transparent focus:border-emerald-500 outline-none" />
+            </div>
+            
+            {isDriver && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-gray-400 uppercase">Make</label>
+                    <input value={editData.car_make} onChange={e => setEditData({...editData, car_make: e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl font-black" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-gray-400 uppercase">Model</label>
+                    <input value={editData.car_model} onChange={e => setEditData({...editData, car_model: e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl font-black" />
+                  </div>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-gray-400 uppercase">Model</label>
-                  <input value={editData.car_model} onChange={e => setEditData({...editData, car_model: e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl font-black" />
+                  <label className="text-[10px] font-black text-gray-400 uppercase">Plate Number</label>
+                  <input value={editData.plate_number} onChange={e => setEditData({...editData, plate_number: e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl font-black" />
                 </div>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-gray-400 uppercase">Plate Number</label>
-                <input value={editData.plate_number} onChange={e => setEditData({...editData, plate_number: e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl font-black" />
-              </div>
-            </>
-          )}
+              </>
+            )}
+          </div>
         </div>
       ) : (
         <div className="bg-white border-2 border-slate-100 p-6 rounded-3xl flex items-center gap-4 shadow-sm">

@@ -1,20 +1,94 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { DriverProfile, Transaction, Booking, BookingStatus } from '../types';
 import { ICONS, COLORS, ROUTES } from '../constants';
+import { api } from '../services/api';
 
 interface WalletProps {
   profile: DriverProfile;
   transactions: Transaction[];
   userRole: 'driver' | 'passenger';
   bookings?: Booking[];
+  onTransaction?: (tx: { type: 'deposit' | 'withdrawal'; amount: number; description: string }) => Promise<void>;
 }
 
-const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bookings = [] }) => {
+const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bookings = [], onTransaction }) => {
   const isDriver = userRole === 'driver';
+  const [showModal, setShowModal] = useState<'deposit' | 'withdraw' | null>(null);
+  const [amount, setAmount] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  // Check for Paystack reference on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const reference = params.get('reference');
+    if (reference) {
+      const verify = async () => {
+        setIsProcessing(true);
+        try {
+          await api.verifyPaystackTopup(reference);
+          // Clean URL
+          window.history.replaceState({}, document.title, window.location.pathname);
+          // Trigger refresh via parent if needed, or just alert
+          alert("Payment verified successfully!");
+          if (onTransaction) await onTransaction({ type: 'deposit', amount: 0, description: 'Refresh' }); // hack to refresh
+        } catch (err) {
+          console.error("Verification failed", err);
+        } finally {
+          setIsProcessing(false);
+        }
+      };
+      verify();
+    }
+  }, []);
   
   // For passengers, "transactions" might be empty in demo, so we show their "My Rides"
   const myRides = bookings.filter(b => b.passenger_id === profile.user_id || b.passenger_name === profile.full_name);
+
+  const handleAction = async () => {
+    if (!amount || isNaN(Number(amount))) return;
+    
+    const numAmount = Number(amount);
+    if (showModal === 'withdraw' && numAmount < 5000) {
+      alert("Minimum withdrawal is ₦5,000");
+      return;
+    }
+    if (showModal === 'withdraw' && numAmount > profile.wallet_balance) {
+      alert("Insufficient balance");
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      if (showModal === 'deposit') {
+        // Paystack flow
+        const res = await api.initPaystackTopup({
+          amountNaira: numAmount,
+          email: profile.email || `${profile.user_id}@routerider.com`
+        });
+        if (res.authorization_url) {
+          window.location.href = res.authorization_url;
+        }
+      } else {
+        // Withdrawal flow
+        await api.withdrawToBank({ amountNaira: numAmount });
+        if (onTransaction) {
+          await onTransaction({
+            type: 'withdrawal',
+            amount: numAmount,
+            description: 'Bank Withdrawal'
+          });
+        }
+        setShowModal(null);
+        setAmount('');
+        alert("Withdrawal successful!");
+      }
+    } catch (error: any) {
+      alert(error.message || "Transaction failed. Please try again.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -39,20 +113,84 @@ const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bo
         <div className="flex gap-2">
           {isDriver ? (
             <>
-              <button className="flex-1 bg-white/20 backdrop-blur-md py-4 rounded-2xl font-black text-sm hover:bg-white/30 transition-colors">
+              <button 
+                onClick={() => setShowModal('withdraw')}
+                className="flex-1 bg-white/20 backdrop-blur-md py-4 rounded-2xl font-black text-sm hover:bg-white/30 transition-colors"
+              >
                 Withdraw
               </button>
-              <button className="flex-1 bg-white text-emerald-600 py-4 rounded-2xl font-black text-sm shadow-sm active:scale-95 transition-all">
+              <button 
+                onClick={() => setShowModal('withdraw')}
+                className="flex-1 bg-white text-emerald-600 py-4 rounded-2xl font-black text-sm shadow-sm active:scale-95 transition-all"
+              >
                 Quick Payout
               </button>
             </>
           ) : (
-            <button className="flex-1 bg-white text-emerald-600 py-4 rounded-2xl font-black text-sm shadow-sm active:scale-95 transition-all">
+            <button 
+              onClick={() => setShowModal('deposit')}
+              className="flex-1 bg-white text-emerald-600 py-4 rounded-2xl font-black text-sm shadow-sm active:scale-95 transition-all"
+            >
               Add Funds
             </button>
           )}
         </div>
       </div>
+
+      {/* Transaction Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 space-y-6 animate-in slide-in-from-bottom-10 duration-300">
+            <div className="text-center space-y-2">
+              <h3 className="text-2xl font-black">
+                {showModal === 'deposit' ? 'Add Funds' : 'Withdraw Earnings'}
+              </h3>
+              <p className="text-gray-500 text-sm font-bold">
+                {showModal === 'deposit' ? 'Top up your RouteRider wallet' : 'Transfer to your linked bank account'}
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Amount (₦)</label>
+                <input 
+                  type="number" 
+                  value={amount}
+                  onChange={e => setAmount(e.target.value)}
+                  placeholder="e.g. 5000"
+                  className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-xl outline-none focus:border-emerald-500 transition-all"
+                />
+              </div>
+              
+              {showModal === 'withdraw' && (
+                <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 flex gap-3">
+                  <div className="text-emerald-600">{ICONS.Check}</div>
+                  <p className="text-[10px] text-emerald-800 font-bold leading-tight">
+                    Funds will be sent to your verified bank account ending in **4921.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={handleAction}
+                disabled={isProcessing || !amount}
+                className="w-full bg-emerald-600 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-emerald-100 disabled:opacity-50 active:scale-95 transition-all"
+              >
+                {isProcessing ? 'Processing...' : showModal === 'deposit' ? 'Confirm Deposit' : 'Confirm Withdrawal'}
+              </button>
+              <button 
+                onClick={() => setShowModal(null)}
+                disabled={isProcessing}
+                className="w-full py-4 text-gray-400 font-black text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Passenger Specific: My Rides */}
       {!isDriver && (

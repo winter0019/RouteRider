@@ -23,6 +23,35 @@ import { Trip, TripStatus, Booking, BookingStatus } from "../types";
 const RIDES_COL = "rides";     // legacy/current
 const TRIPS_COL = "trips";     // optional new
 const BOOKINGS_COL = "bookings";
+const TRANSACTIONS_COL = "transactions";
+const WALLETS_COL = "wallets";
+
+const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || "";
+
+function requireAuth() {
+  if (!auth?.currentUser) throw new Error("Not authenticated");
+  return auth.currentUser;
+}
+
+async function authedFetch(path: string, body?: any) {
+  const user = requireAuth();
+  const token = await user.getIdToken();
+
+  const res = await fetch(`${API_BASE}/api${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body || {}),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(text || `Request failed: ${res.status}`);
+  }
+  return res.json();
+}
 
 /** Safe helper */
 const toISO = (v: any) => {
@@ -64,8 +93,10 @@ const mapRideDocToTrip = (id: string, data: any): Trip => {
     seats_available: seatsAvailable,
     seats_booked: seatsBooked,
 
+    price_per_seat: Number(data.price_per_seat ?? 0),
     driver_name: String(data.driver_name || "Verified Owner"),
     car_details: String(data.car_details || data.vehicle_name || "Vehicle"),
+    vehicle_name: String(data.vehicle_name || data.car_details || "Vehicle"),
 
     status: (data.status as TripStatus) || TripStatus.POSTED,
     earnings: Number(data.earnings ?? 0),
@@ -99,8 +130,10 @@ const mapTripDocToTrip = (id: string, data: any): Trip => {
     seats_available: Number(data.seats_available ?? 0),
     seats_booked: Number(data.seats_booked ?? bookedBy.length),
 
+    price_per_seat: Number(data.price_per_seat ?? 0),
     driver_name: String(data.driver_name || "Verified Owner"),
     car_details: String(data.car_details || data.vehicle_name || "Vehicle"),
+    vehicle_name: String(data.vehicle_name || data.car_details || "Vehicle"),
 
     status: (data.status as TripStatus) || TripStatus.POSTED,
     earnings: Number(data.earnings ?? 0),
@@ -111,10 +144,9 @@ const mapTripDocToTrip = (id: string, data: any): Trip => {
 };
 
 export const api = {
-  /**
-   * ✅ Returns merged list from BOTH /rides and /trips
-   * Passengers will see all recent posts.
-   */
+  // ----------------------------
+  // TRIPS
+  // ----------------------------
   async getTrips(): Promise<Trip[]> {
     if (!db) return [];
 
@@ -162,16 +194,12 @@ export const api = {
     }
   },
 
-  /**
-   * ✅ Posts to /rides by default (your current app)
-   */
   async postTrip(tripData: Partial<Trip>): Promise<Trip> {
     if (!db || !auth?.currentUser) throw new Error("Not authenticated");
 
     let origin = String(tripData.origin || "").trim();
     let destination = String(tripData.destination || "").trim();
 
-    // Fallback: extract from route if origin/destination are missing
     if (!origin || !destination) {
       const routeStr = tripData.route || '';
       if (routeStr.includes('→')) {
@@ -194,7 +222,9 @@ export const api = {
       time: tripData.departure_time || tripData.time || new Date().toISOString(),
 
       driver_name: tripData.driver_name || "Verified Owner",
-      car_details: tripData.car_details || "Vehicle",
+      vehicle_name: tripData.vehicle_name || tripData.car_details || "Vehicle",
+      car_details: tripData.car_details || tripData.vehicle_name || "Vehicle",
+      price_per_seat: Number(tripData.price_per_seat ?? 0),
 
       status: TripStatus.POSTED,
       earnings: 0,
@@ -205,12 +235,38 @@ export const api = {
     return mapRideDocToTrip(ref.id, ride);
   },
 
-  /**
-   * ✅ Booking MUST be safe:
-   * - Don’t allow double increments
-   * - Don’t exceed seats_available
-   * Uses transaction = best practice
-   */
+  // ----------------------------
+  // WALLET: Passenger Top-up (Paystack)
+  // ----------------------------
+  async initPaystackTopup(params: { amountNaira: number; email: string; meta?: any }) {
+    const amountKobo = Math.round(params.amountNaira * 100);
+    return authedFetch("/paystack/initialize", {
+      amountKobo,
+      email: params.email,
+      meta: params.meta || {},
+    });
+  },
+
+  async verifyPaystackTopup(reference: string) {
+    return authedFetch("/paystack/verify", { reference });
+  },
+
+  async getMyWallet() {
+    if (!db) return { balance: 0 };
+    const user = requireAuth();
+    const ref = doc(db, WALLETS_COL, user.uid);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return { balance: 0 };
+    return snap.data() as { balance: number; balanceKobo: number };
+  },
+
+  // ----------------------------
+  // Booking with Wallet (server-side)
+  // ----------------------------
+  async bookTripWithWallet(tripId: string) {
+    return authedFetch("/wallet/book", { tripId });
+  },
+
   async bookTrip(tripId: string, source: "rides" | "trips" = "rides"): Promise<void> {
     if (!db || !auth?.currentUser) throw new Error("Not authenticated");
     const uid = auth.currentUser.uid;
@@ -229,10 +285,8 @@ export const api = {
       const currentBooked =
         typeof data.seats_booked === "number" ? data.seats_booked : bookedBy.length;
 
-      // already booked => no-op (prevents double increment)
       if (bookedBy.includes(uid)) return;
 
-      // full => block
       if (currentBooked >= seatsAvailable) {
         throw new Error("Trip is full");
       }
@@ -261,7 +315,7 @@ export const api = {
       const currentBooked =
         typeof data.seats_booked === "number" ? data.seats_booked : bookedBy.length;
 
-      if (!bookedBy.includes(uid)) return; // not booked => no-op
+      if (!bookedBy.includes(uid)) return;
 
       tx.update(ref, {
         bookedBy: arrayRemove(uid),
@@ -293,15 +347,12 @@ export const api = {
     }
   },
 
-  /**
-   * ✅ Optional: bookings collection
-   */
   async createBooking(bookingData: any): Promise<Booking> {
     if (!db || !auth?.currentUser) throw new Error("Not authenticated");
 
     const booking: any = {
       trip_id: String(bookingData.trip_id),
-      driver_id: String(bookingData.driver_id), // Added driver_id for security rules
+      driver_id: String(bookingData.driver_id),
       passenger_id: auth.currentUser.uid,
       passenger_name: bookingData.passenger_name || "Passenger",
       passenger_photo:
@@ -386,4 +437,65 @@ export const api = {
     const col = source === "trips" ? TRIPS_COL : RIDES_COL;
     await deleteDoc(doc(db, col, tripId));
   },
+
+  async getProfile(userId: string) {
+    if (!db) return null;
+    const docRef = doc(db, "users", userId);
+    const docSnap = await getDoc(docRef);
+    return docSnap.exists() ? docSnap.data() : null;
+  },
+
+  // ----------------------------
+  // Driver withdrawal (Paystack Transfers) - backend only
+  // ----------------------------
+  async withdrawToBank(params: { amountNaira: number }) {
+    const amountKobo = Math.round(params.amountNaira * 100);
+    return authedFetch("/wallet/withdraw", { amountKobo });
+  },
+
+  async createTransaction(txData: any) {
+    if (!db || !auth?.currentUser) throw new Error("Not authenticated");
+    const tx = {
+      user_id: auth.currentUser.uid,
+      uid: auth.currentUser.uid,
+      type: txData.type,
+      amount: Number(txData.amount),
+      description: txData.description,
+      createdAt: Timestamp.now(),
+    };
+    const ref = await addDoc(collection(db, TRANSACTIONS_COL), tx);
+    
+    const userRef = doc(db, "users", auth.currentUser.uid);
+    await updateDoc(userRef, {
+      wallet_balance: increment(tx.type === 'deposit' || tx.type === 'commission' ? tx.amount : -tx.amount)
+    });
+
+    return {
+      transaction_id: ref.id,
+      ...tx,
+      created_at: tx.createdAt.toDate().toISOString(),
+    };
+  },
+
+  async getTransactions(userId: string) {
+    if (!db) return [];
+    const q = query(
+      collection(db, TRANSACTIONS_COL),
+      where("user_id", "==", userId),
+      orderBy("createdAt", "desc")
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(d => {
+      const data = d.data();
+      return {
+        transaction_id: d.id,
+        user_id: data.user_id,
+        uid: data.uid || data.user_id,
+        type: data.type,
+        amount: data.amount,
+        description: data.description,
+        created_at: toISO(data.createdAt),
+      };
+    }) as any[];
+  }
 };

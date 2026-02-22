@@ -34,6 +34,15 @@ export const firestoreService = {
     return docSnap.exists() ? docSnap.data() : null;
   },
 
+  async updateUserProfile(userId: string, data: any) {
+    if (!db) return;
+    const docRef = doc(db, 'users', userId);
+    await updateDoc(docRef, {
+      ...data,
+      updatedAt: Timestamp.now()
+    });
+  },
+
   // ----------------- Rides (Trips) -----------------
   async createRide(rideData: {
     origin: string;

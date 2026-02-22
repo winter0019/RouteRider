@@ -51,6 +51,8 @@ export interface Trip {
   bookedBy?: string[];
   route: string;
   departure_time: string;
+  price_per_seat: number;
+  vehicle_name?: string;
   seats_available: number;
   seats_booked: number;
   status: TripStatus;

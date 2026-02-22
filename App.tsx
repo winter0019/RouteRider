@@ -60,9 +60,24 @@ const App: React.FC = () => {
     localStorage.setItem("rr_transactions", JSON.stringify(tx));
   };
 
-  const handleUpdateProfile = (newProfile: DriverProfile) => {
+  const handleUpdateProfile = async (newProfile: DriverProfile) => {
     setProfile(newProfile);
     localStorage.setItem("rr_profile", JSON.stringify(newProfile));
+    
+    if (newProfile.user_id) {
+      try {
+        await firestoreService.updateUserProfile(newProfile.user_id, {
+          full_name: newProfile.full_name,
+          car_make: newProfile.car_make,
+          car_model: newProfile.car_model,
+          car_color: newProfile.car_color,
+          plate_number: newProfile.plate_number,
+          profile_photo_url: newProfile.profile_photo_url
+        });
+      } catch (error) {
+        console.error("Failed to update profile in Firestore:", error);
+      }
+    }
   };
 
   // -------------------------
@@ -134,6 +149,33 @@ const App: React.FC = () => {
       console.error("Failed to refresh user bookings:", error);
     }
   }, [profile?.user_id]);
+
+  const refreshTransactionsFromBackend = useCallback(async () => {
+    if (!profile?.user_id) return;
+    try {
+      const tx = await api.getTransactions(profile.user_id);
+      persistTransactions(tx);
+    } catch (error) {
+      console.error("Failed to refresh transactions:", error);
+    }
+  }, [profile?.user_id]);
+
+  const handleTransaction = async (txData: { type: 'deposit' | 'withdrawal'; amount: number; description: string }) => {
+    try {
+      const newTx = await api.createTransaction(txData);
+      persistTransactions([newTx, ...transactions]);
+      
+      // Refresh profile to get new balance
+      const updatedProfile = await api.getProfile(profile!.user_id);
+      if (updatedProfile) {
+        setProfile(updatedProfile as any);
+        localStorage.setItem("rr_profile", JSON.stringify(updatedProfile));
+      }
+    } catch (error) {
+      console.error("Transaction failed:", error);
+      throw error;
+    }
+  };
 
   // -------------------------
   // Initial load + sync
@@ -232,11 +274,19 @@ const App: React.FC = () => {
     }
   }, [userRole, isLoggedIn, refreshUserBookingsFromBackend]);
 
+  // Sync transactions
+  useEffect(() => {
+    if (isLoggedIn && currentPage === 'wallet') {
+      refreshTransactionsFromBackend();
+    }
+  }, [isLoggedIn, currentPage, refreshTransactionsFromBackend]);
+
   // optional: refresh when tab becomes active
   useEffect(() => {
     const onFocus = () => {
       if (isLoggedIn) {
         refreshTripsFromBackend();
+        refreshTransactionsFromBackend();
         if (userRole === 'driver') {
           refreshBookingsFromBackend();
         } else if (userRole === 'passenger') {
@@ -272,24 +322,25 @@ const App: React.FC = () => {
   // -------------------------
   const handleBookTrip = async (trip: Trip) => {
     try {
-      // Create real booking in Firestore
-      const newBooking = await api.createBooking({
-        trip_id: trip.trip_id,
-        driver_id: trip.driver_id || trip.carOwnerId, // Pass driver_id for security rules
-        passenger_name: profile?.full_name || 'Anonymous',
-        passenger_photo: profile?.profile_photo_url,
-        amount_paid: ROUTES.SUGGESTED_PRICE_PER_SEAT,
-      });
+      // Use the secure wallet-based booking
+      await api.bookTripWithWallet(trip.trip_id);
 
-      // Also update the ride's bookedBy list (legacy support/simple count)
-      await api.bookTrip(trip.trip_id, trip.source as any);
-
-      // refresh so seat counts update immediately
-      await refreshTripsFromBackend();
-
-      persistBookings([newBooking, ...bookings]);
-    } catch (error) {
+      // refresh everything
+      await Promise.all([
+        refreshTripsFromBackend(),
+        refreshUserBookingsFromBackend(),
+        refreshTransactionsFromBackend()
+      ]);
+      
+      // Refresh profile to get new balance
+      const updatedProfile = await api.getProfile(profile!.user_id);
+      if (updatedProfile) {
+        setProfile(updatedProfile as any);
+        localStorage.setItem("rr_profile", JSON.stringify(updatedProfile));
+      }
+    } catch (error: any) {
       console.error("Failed to book trip:", error);
+      alert(error.message || "Booking failed. Check your wallet balance.");
       throw error;
     }
   };
@@ -353,6 +404,7 @@ const App: React.FC = () => {
               transactions={transactions}
               userRole={userRole}
               bookings={bookings}
+              onTransaction={handleTransaction}
             />
           );
         case "settings":
@@ -407,6 +459,7 @@ const App: React.FC = () => {
             transactions={transactions}
             userRole={userRole}
             bookings={bookings}
+            onTransaction={handleTransaction}
           />
         );
       case "settings":

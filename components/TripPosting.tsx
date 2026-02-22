@@ -15,6 +15,7 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
   const [destination, setDestination] = useState('Kano');
   const [departureTime, setDepartureTime] = useState('07:00');
   const [seats, setSeats] = useState(3);
+  const [price, setPrice] = useState(ROUTES.SUGGESTED_PRICE_PER_SEAT);
   const [isPosting, setIsPosting] = useState(false);
 
   const handleSwap = () => {
@@ -38,10 +39,12 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
         driver_id: profile.user_id,
         driver_name: profile.full_name,
         car_details: `${profile.car_make} ${profile.car_model} (${profile.plate_number})`,
+        vehicle_name: `${profile.car_make} ${profile.car_model}`,
         origin: origin,
         destination: destination,
         route: `${origin} → ${destination}`,
         departure_time: depTime.toISOString(),
+        price_per_seat: price,
         seats_available: seats,
         seats_booked: 0,
         status: TripStatus.POSTED,
@@ -157,6 +160,18 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Price Input */}
+        <div className="space-y-2">
+          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Price Per Seat (₦)</label>
+          <input 
+            type="number" 
+            value={price}
+            onChange={(e) => setPrice(Number(e.target.value))}
+            className="w-full p-5 bg-white border-2 border-slate-200 rounded-2xl text-xl font-black text-black focus:outline-none focus:ring-4 focus:ring-emerald-500/20 transition-all"
+          />
+          <p className="text-[10px] text-gray-400 font-bold px-1">Suggested: ₦{ROUTES.SUGGESTED_PRICE_PER_SEAT.toLocaleString()}</p>
         </div>
 
         <button 

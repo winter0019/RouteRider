@@ -198,7 +198,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
                     </div>
                   </div>
                   <div className="text-right">
-                     <p className="text-xl font-black text-emerald-600">₦{ROUTES.SUGGESTED_PRICE_PER_SEAT.toLocaleString()}</p>
+                     <p className="text-xl font-black text-emerald-600">₦{(trip.price_per_seat || ROUTES.SUGGESTED_PRICE_PER_SEAT).toLocaleString()}</p>
                      <p className="text-[10px] font-bold text-gray-400">per seat</p>
                   </div>
                 </div>
@@ -210,7 +210,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
                   </div>
                   <div className="flex items-center gap-2">
                      <div className="text-gray-400">{ICONS.Car}</div>
-                     <p className="font-black text-sm text-black">{trip.car_details || 'Toyota Corolla'}</p>
+                     <p className="font-black text-sm text-black">{trip.vehicle_name || trip.car_details || 'Vehicle'}</p>
                   </div>
                 </div>
 
@@ -274,7 +274,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
                 <div className="grid grid-cols-2 gap-3">
                    <div className="bg-slate-50 p-4 rounded-3xl space-y-1">
                       <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Vehicle</p>
-                      <p className="font-black text-sm">{selectedTrip.car_details || 'Toyota Corolla'}</p>
+                      <p className="font-black text-sm">{selectedTrip.vehicle_name || selectedTrip.car_details || 'Vehicle'}</p>
                       <p className="text-[10px] text-emerald-600 font-bold">Verified</p>
                    </div>
                    <div className="bg-slate-50 p-4 rounded-3xl space-y-1">
@@ -359,7 +359,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100">
                     <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1">Vehicle</p>
-                    <p className="font-black text-sm text-black leading-tight">{confirmedTrip.car_details || 'Toyota Corolla'}</p>
+                    <p className="font-black text-sm text-black leading-tight">{confirmedTrip.vehicle_name || confirmedTrip.car_details || 'Vehicle'}</p>
                     <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase">Plate Verified</p>
                   </div>
                   <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100">
@@ -375,7 +375,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
                 <div className="flex items-center justify-between pt-4 border-t border-dashed border-slate-200">
                   <div>
                     <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Amount Paid</p>
-                    <p className="text-xl font-black text-emerald-600">₦{ROUTES.SUGGESTED_PRICE_PER_SEAT.toLocaleString()}</p>
+                    <p className="text-xl font-black text-emerald-600">₦{(confirmedTrip.price_per_seat || ROUTES.SUGGESTED_PRICE_PER_SEAT).toLocaleString()}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Ticket ID</p>
