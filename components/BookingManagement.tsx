@@ -23,34 +23,39 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
     // This was previously adding a mock booking for Sarah O.
   }, []);
 
-  const handleAction = async (bookingId: string, action: 'accept' | 'reject') => {
+  const handleAction = async (booking: Booking, action: 'accept' | 'reject') => {
     const status = action === 'accept' ? BookingStatus.ACCEPTED : BookingStatus.REJECTED;
     
     try {
-      await api.updateBookingStatus(bookingId, status);
+      await api.updateBookingStatus(booking.booking_id, status);
       
+      if (action === 'reject' && activeTrip) {
+        // If rejected, we need to free up the seat that was reserved
+        await api.cancelBooking(activeTrip.trip_id, activeTrip.source as any);
+      }
+
       const updatedBookings = bookings.map(b => 
-        b.booking_id === bookingId 
+        b.booking_id === booking.booking_id 
         ? { ...b, status }
         : b
       );
       setBookings(updatedBookings);
 
       if (action === 'accept' && activeTrip) {
+        const isFull = (activeTrip.seats_booked) >= activeTrip.seats_available;
+        const newTripStatus = isFull ? TripStatus.IN_PROGRESS : TripStatus.POSTED;
+        
+        if (newTripStatus !== activeTrip.status) {
+          await api.updateTripStatus(activeTrip.trip_id, newTripStatus, activeTrip.source as any);
+        }
+
         setActiveTrip({
           ...activeTrip,
-          status: (activeTrip.seats_booked) === activeTrip.seats_available ? TripStatus.IN_PROGRESS : TripStatus.POSTED
+          status: newTripStatus
         });
       }
     } catch (error) {
-      console.error('Failed to update booking status on backend:', error);
-      // Fallback to local update if API fails (optional, maybe show error instead)
-      const updatedBookings = bookings.map(b => 
-        b.booking_id === bookingId 
-        ? { ...b, status }
-        : b
-      );
-      setBookings(updatedBookings);
+      console.error('Failed to update booking status:', error);
     }
     setViewingPassenger(null);
   };
@@ -202,13 +207,13 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
 
               <div className="flex flex-col gap-2 pt-2">
                 <button 
-                  onClick={() => handleAction(viewingPassenger.booking_id, 'accept')}
+                  onClick={() => handleAction(viewingPassenger, 'accept')}
                   className="w-full bg-emerald-600 text-white p-4 rounded-2xl font-bold shadow-lg shadow-emerald-200"
                 >
                   Accept Passenger
                 </button>
                 <button 
-                  onClick={() => handleAction(viewingPassenger.booking_id, 'reject')}
+                  onClick={() => handleAction(viewingPassenger, 'reject')}
                   className="w-full bg-white text-red-500 p-4 rounded-2xl font-bold"
                 >
                   Reject

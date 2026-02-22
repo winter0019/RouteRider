@@ -167,46 +167,39 @@ const App: React.FC = () => {
   useEffect(() => {
     const unsubscribe = auth?.onAuthStateChanged(async (user) => {
       if (user) {
-        // Use a functional update or check state via ref if needed, 
-        // but here we just want to fetch if we don't have it yet.
-        // We'll check the current profile state.
-        setProfile(prev => {
-          if (!prev) {
-            firestoreService.getUserProfile(user.uid).then(firestoreProfile => {
-              if (firestoreProfile) {
-                const p: DriverProfile = {
-                  user_id: user.uid,
-                  full_name: firestoreProfile.full_name,
-                  phone_number: firestoreProfile.phone_number || firestoreProfile.phone || 'N/A',
-                  car_make: firestoreProfile.car_make || 'N/A',
-                  car_model: firestoreProfile.car_model || 'N/A',
-                  car_color: firestoreProfile.car_color || 'Standard',
-                  plate_number: firestoreProfile.plate_number || 'N/A',
-                  verification_status: firestoreProfile.verification_status || { phone: true, id: true, first_trip: false },
-                  rating: firestoreProfile.rating || 5.0,
-                  trip_count: firestoreProfile.trip_count || 0,
-                  wallet_balance: firestoreProfile.wallet_balance || 0,
-                  total_earnings: firestoreProfile.total_earnings || 0,
-                  profile_photo_url: firestoreProfile.profile_photo_url
-                };
-                const role = (firestoreProfile.userType || 'passenger') as UserRole;
-                
-                setProfile(p);
-                setUserRole(role);
-                setIsLoggedIn(true);
-                
-                localStorage.setItem("rr_profile", JSON.stringify(p));
-                localStorage.setItem("rr_role", role);
-                
-                if (role === "passenger") setCurrentPage("search");
-                refreshTripsFromBackend();
-              }
-            }).catch(error => {
-              console.error("Error fetching profile from Firestore:", error);
-            });
+        try {
+          const firestoreProfile = await firestoreService.getUserProfile(user.uid);
+          if (firestoreProfile) {
+            const p: DriverProfile = {
+              user_id: user.uid,
+              full_name: firestoreProfile.full_name,
+              phone_number: firestoreProfile.phone_number || firestoreProfile.phone || 'N/A',
+              car_make: firestoreProfile.car_make || 'N/A',
+              car_model: firestoreProfile.car_model || 'N/A',
+              car_color: firestoreProfile.car_color || 'Standard',
+              plate_number: firestoreProfile.plate_number || 'N/A',
+              verification_status: firestoreProfile.verification_status || { phone: true, id: true, first_trip: false },
+              rating: firestoreProfile.rating || 5.0,
+              trip_count: firestoreProfile.trip_count || 0,
+              wallet_balance: firestoreProfile.wallet_balance || 0,
+              total_earnings: firestoreProfile.total_earnings || 0,
+              profile_photo_url: firestoreProfile.profile_photo_url
+            };
+            const role = (firestoreProfile.userType || 'passenger') as UserRole;
+            
+            setProfile(p);
+            setUserRole(role);
+            setIsLoggedIn(true);
+            
+            localStorage.setItem("rr_profile", JSON.stringify(p));
+            localStorage.setItem("rr_role", role);
+            
+            if (role === "passenger") setCurrentPage("search");
+            refreshTripsFromBackend();
           }
-          return prev;
-        });
+        } catch (error) {
+          console.error("Error fetching profile from Firestore:", error);
+        }
       } else {
         setIsLoggedIn(prev => {
           if (prev) {

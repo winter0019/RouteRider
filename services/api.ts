@@ -281,6 +281,18 @@ export const api = {
     }
   },
 
+  async updateTripStatus(tripId: string, status: TripStatus, source: "rides" | "trips" = "rides") {
+    if (!db) return;
+    try {
+      const col = source === "trips" ? TRIPS_COL : RIDES_COL;
+      const tripRef = doc(db, col, tripId);
+      await updateDoc(tripRef, { status });
+    } catch (error) {
+      console.error('Firestore Error (updateTripStatus):', error);
+      throw error;
+    }
+  },
+
   /**
    * ✅ Optional: bookings collection
    */
