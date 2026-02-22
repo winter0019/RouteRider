@@ -2,56 +2,129 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ----------------- Users -----------------
+    // =============================
+    // RIDES /rides/{rideId}
+    // Used by your current api.ts (collection: "rides")
+    // =============================
+    match /rides/{rideId} {
+
+      allow read: if request.auth != null;
+
+      // Driver creates ride
+      allow create: if request.auth != null
+        && request.resource.data.carOwnerId == request.auth.uid
+        && request.resource.data.bookedBy is list
+        && request.resource.data.seats_available is int
+        && request.resource.data.seats_booked is int
+        && request.resource.data.seats_available >= 1
+        && request.resource.data.seats_booked == 0;
+
+      // Updates:
+      // - owner can update anything
+      // - passenger can ONLY change bookedBy + seats_booked (book/cancel)
+      allow update: if request.auth != null && (
+        resource.data.carOwnerId == request.auth.uid ||
+
+        (
+          request.resource.data.diff(resource.data).changedKeys()
+            .hasOnly(['bookedBy', 'seats_booked']) &&
+
+          (
+            // BOOK: uid added and seats_booked + 1
+            (
+              !resource.data.bookedBy.hasAny([request.auth.uid]) &&
+              request.resource.data.bookedBy.hasAny([request.auth.uid]) &&
+              request.resource.data.seats_booked == resource.data.seats_booked + 1 &&
+              request.resource.data.seats_booked <= resource.data.seats_available
+            )
+            ||
+            // CANCEL: uid removed and seats_booked - 1
+            (
+              resource.data.bookedBy.hasAny([request.auth.uid]) &&
+              !request.resource.data.bookedBy.hasAny([request.auth.uid]) &&
+              request.resource.data.seats_booked == resource.data.seats_booked - 1 &&
+              request.resource.data.seats_booked >= 0
+            )
+          )
+        )
+      );
+
+      allow delete: if request.auth != null && resource.data.carOwnerId == request.auth.uid;
+    }
+
+
+    // =============================
+    // TRIPS /trips/{tripId} (optional / future)
+    // =============================
+    match /trips/{tripId} {
+
+      allow read: if request.auth != null;
+
+      allow create: if request.auth != null
+        && request.resource.data.driver_id == request.auth.uid
+        && request.resource.data.bookedBy is list
+        && request.resource.data.seats_available is int
+        && request.resource.data.seats_booked is int
+        && request.resource.data.seats_available >= 1
+        && request.resource.data.seats_booked == 0;
+
+      allow update: if request.auth != null && (
+        resource.data.driver_id == request.auth.uid ||
+
+        (
+          request.resource.data.diff(resource.data).changedKeys()
+            .hasOnly(['bookedBy','seats_booked']) &&
+
+          (
+            (
+              !resource.data.bookedBy.hasAny([request.auth.uid]) &&
+              request.resource.data.bookedBy.hasAny([request.auth.uid]) &&
+              request.resource.data.seats_booked == resource.data.seats_booked + 1 &&
+              request.resource.data.seats_booked <= resource.data.seats_available
+            )
+            ||
+            (
+              resource.data.bookedBy.hasAny([request.auth.uid]) &&
+              !request.resource.data.bookedBy.hasAny([request.auth.uid]) &&
+              request.resource.data.seats_booked == resource.data.seats_booked - 1 &&
+              request.resource.data.seats_booked >= 0
+            )
+          )
+        )
+      );
+
+      allow delete: if request.auth != null && resource.data.driver_id == request.auth.uid;
+    }
+
+    // =============================
+    // BOOKINGS /bookings/{bookingId}
+    // =============================
+    match /bookings/{bookingId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if request.auth != null;
+    }
+
+    // =============================
+    // USERS /users/{userId}
+    // =============================
     match /users/{userId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // ----------------- Rides (Trips) -----------------
-    match /rides/{rideId} {
-      // Allow read for everyone to see available trips on the home page
-      allow read: if true;
-
-      // Authenticated users can create rides
-      allow create: if request.auth != null;
-      
-      // Update rules:
-      // Drivers can update their own rides.
-      // Passengers can update the 'bookedBy' array to join/leave.
-      allow update: if request.auth != null && (
-        resource.data.carOwnerId == request.auth.uid ||
-        request.resource.data.diff(resource.data).changedKeys().hasOnly(['bookedBy'])
-      );
-      
-      // Only car owner can delete their ride
-      allow delete: if request.auth != null && resource.data.carOwnerId == request.auth.uid;
-    }
-
-    // ----------------- Bookings -----------------
-    match /bookings/{bookingId} {
-      // Authenticated users can read bookings
-      allow read: if request.auth != null;
-      
-      // Authenticated users can create bookings
-      allow create: if request.auth != null;
-      
-      // Update rules:
-      // Allow updates by the passenger or the driver of the trip
-      allow update: if request.auth != null;
-      
-      // Delete rules:
-      // Allow deletion by the passenger or the driver
-      allow delete: if request.auth != null;
-    }
-
-    // ----------------- Admin App Settings -----------------
+    // =============================
+    // APP SETTINGS /app_settings/{documentId}
+    // =============================
     match /app_settings/{documentId} {
-      allow read: if true;
+      allow read: if request.auth != null;
       allow write: if request.auth != null;
     }
 
-    // ----------------- Deny everything else -----------------
+    // =============================
+    // DENY EVERYTHING ELSE
+    // =============================
     match /{document=**} {
       allow read, write: if false;
     }

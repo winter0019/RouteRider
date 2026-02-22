@@ -1,3 +1,4 @@
+
 import {
   collection,
   doc,
@@ -54,18 +55,15 @@ const mapRideDocToTrip = (id: string, data: any): Trip => {
 
     origin,
     destination,
-    route: `${origin} → ${destination}`,
+    route: data.route || `${origin} → ${destination}`,
 
-    departure_time: data.time,
-    time: data.time,
+    departure_time: data.time || data.departure_time,
+    time: data.time || data.departure_time,
 
     seats_available: seatsAvailable,
     seats_booked: seatsBooked,
 
-    price_per_seat: Number(data.price_per_seat ?? 0),
     driver_name: String(data.driver_name || "Verified Owner"),
-
-    vehicle_name: String(data.vehicle_name || data.car_details || "Vehicle"),
     car_details: String(data.car_details || data.vehicle_name || "Vehicle"),
 
     status: (data.status as TripStatus) || TripStatus.POSTED,
@@ -100,10 +98,7 @@ const mapTripDocToTrip = (id: string, data: any): Trip => {
     seats_available: Number(data.seats_available ?? 0),
     seats_booked: Number(data.seats_booked ?? bookedBy.length),
 
-    price_per_seat: Number(data.price_per_seat ?? 0),
     driver_name: String(data.driver_name || "Verified Owner"),
-
-    vehicle_name: String(data.vehicle_name || data.car_details || "Vehicle"),
     car_details: String(data.car_details || data.vehicle_name || "Vehicle"),
 
     status: (data.status as TripStatus) || TripStatus.POSTED,
@@ -153,16 +148,24 @@ export const api = {
 
   /**
    * ✅ Posts to /rides by default (your current app)
-   * If you want, you can add a flag to post to /trips.
    */
   async postTrip(tripData: Partial<Trip>): Promise<Trip> {
     if (!db || !auth?.currentUser) throw new Error("Not authenticated");
 
-    const origin = String(tripData.origin || "").trim();
-    const destination = String(tripData.destination || "").trim();
+    let origin = String(tripData.origin || "").trim();
+    let destination = String(tripData.destination || "").trim();
+
+    // Fallback: extract from route if origin/destination are missing
+    if (!origin || !destination) {
+      const routeStr = tripData.route || '';
+      if (routeStr.includes('→')) {
+        [origin, destination] = routeStr.split('→').map(s => s.trim());
+      } else if (routeStr.includes('->')) {
+        [origin, destination] = routeStr.split('->').map(s => s.trim());
+      }
+    }
 
     const seatsAvailable = Math.max(1, Number(tripData.seats_available ?? 1));
-    const pricePerSeat = Number(tripData.price_per_seat ?? 0);
 
     const ride: any = {
       carOwnerId: auth.currentUser.uid,
@@ -170,14 +173,12 @@ export const api = {
       seats_available: seatsAvailable,
       seats_booked: 0,
 
-      origin,
-      destination,
+      origin: origin || 'Unknown',
+      destination: destination || 'Unknown',
       time: tripData.departure_time || tripData.time || new Date().toISOString(),
 
       driver_name: tripData.driver_name || "Verified Owner",
-      vehicle_name: tripData.vehicle_name || tripData.car_details || "Vehicle",
-      car_details: tripData.car_details || tripData.vehicle_name || "Vehicle",
-      price_per_seat: pricePerSeat,
+      car_details: tripData.car_details || "Vehicle",
 
       status: TripStatus.POSTED,
       earnings: 0,
@@ -220,8 +221,6 @@ export const api = {
         throw new Error("Trip is full");
       }
 
-      // ✅ IMPORTANT: Rules for /rides allow bookedBy updates; seats_booked increment is okay only if your rule allows it.
-      // If your rides rules only allow bookedBy changes, REMOVE seats_booked updates here.
       tx.update(ref, {
         bookedBy: arrayUnion(uid),
         seats_booked: increment(1),
@@ -255,6 +254,17 @@ export const api = {
     });
   },
 
+  async updateBookingStatus(bookingId: string, status: string) {
+    if (!db) return;
+    try {
+      const bookingRef = doc(db, BOOKINGS_COL, bookingId);
+      await updateDoc(bookingRef, { status });
+    } catch (error) {
+      console.error('Firestore Error (updateBookingStatus):', error);
+      throw error;
+    }
+  },
+
   /**
    * ✅ Optional: bookings collection
    */
@@ -268,6 +278,8 @@ export const api = {
       passenger_photo:
         bookingData.passenger_photo ||
         `https://picsum.photos/100/100?seed=${auth.currentUser.uid}`,
+      passenger_rating: 5.0,
+      passenger_trips: 0,
       seats_booked: bookingData.seats_booked ?? 1,
       amount_paid: Number(bookingData.amount_paid ?? 0),
       status: BookingStatus.PENDING,
@@ -282,6 +294,8 @@ export const api = {
       passenger_id: booking.passenger_id,
       passenger_name: booking.passenger_name,
       passenger_photo: booking.passenger_photo,
+      passenger_rating: booking.passenger_rating,
+      passenger_trips: booking.passenger_trips,
       seats_booked: booking.seats_booked,
       amount_paid: booking.amount_paid,
       status: booking.status,
@@ -302,6 +316,8 @@ export const api = {
         passenger_id: data.passenger_id,
         passenger_name: data.passenger_name,
         passenger_photo: data.passenger_photo,
+        passenger_rating: data.passenger_rating || 5.0,
+        passenger_trips: data.passenger_trips || 0,
         seats_booked: data.seats_booked,
         amount_paid: data.amount_paid,
         status: data.status,

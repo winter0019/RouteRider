@@ -38,6 +38,8 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
         driver_id: profile.user_id,
         driver_name: profile.full_name,
         car_details: `${profile.car_make} ${profile.car_model} (${profile.plate_number})`,
+        origin: origin,
+        destination: destination,
         route: `${origin} → ${destination}`,
         departure_time: depTime.toISOString(),
         seats_available: seats,

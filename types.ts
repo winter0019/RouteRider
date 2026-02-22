@@ -45,6 +45,8 @@ export interface Trip {
   carOwnerId?: string; // For Firestore compatibility
   origin?: string;
   destination?: string;
+  id?: string;
+  source?: 'rides' | 'trips';
   time?: string;
   bookedBy?: string[];
   route: string;
