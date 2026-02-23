@@ -485,23 +485,36 @@ export const api = {
 
   async getTransactions(userId: string) {
     if (!db) return [];
-    const q = query(
-      collection(db, TRANSACTIONS_COL),
-      where("user_id", "==", userId),
-      orderBy("createdAt", "desc")
-    );
-    const snap = await getDocs(q);
-    return snap.docs.map(d => {
-      const data = d.data();
-      return {
-        transaction_id: d.id,
-        user_id: data.user_id,
-        uid: data.uid || data.user_id,
-        type: data.type,
-        amount: data.amount,
-        description: data.description,
-        created_at: toISO(data.createdAt),
-      };
-    }) as any[];
+    const user = auth?.currentUser;
+    if (!user) return [];
+    
+    // Safety: only allow querying own transactions from client
+    const targetId = userId || user.uid;
+    
+    try {
+      const q = query(
+        collection(db, TRANSACTIONS_COL),
+        where("user_id", "==", targetId),
+        orderBy("createdAt", "desc")
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map(d => {
+        const data = d.data();
+        return {
+          transaction_id: d.id,
+          user_id: data.user_id || data.userId,
+          uid: data.uid || data.user_id || data.userId,
+          type: data.type,
+          amount: data.amount,
+          description: data.description,
+          created_at: toISO(data.createdAt),
+        };
+      }) as any[];
+    } catch (error: any) {
+      if (error.message?.includes("permissions")) {
+        console.error("Firestore Permission Error: Check if 'transactions' collection exists and rules allow read for user_id.");
+      }
+      throw error;
+    }
   }
 };

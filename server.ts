@@ -96,6 +96,7 @@ async function startServer() {
 
           tx.set(db.collection(TX_COL).doc(reference), {
             userId: intent.userId,
+            user_id: intent.userId,
             uid: intent.userId,
             type: "topup",
             amount: intent.amountKobo / 100,
@@ -127,6 +128,7 @@ async function startServer() {
 
           tx.set(db.collection(TX_COL).doc(`escrow_${intent.bookingId}`), {
             userId: booking.passenger_id || booking.passengerId,
+            user_id: booking.passenger_id || booking.passengerId,
             uid: booking.passenger_id || booking.passengerId,
             type: "escrow_hold",
             amount: -intent.amountKobo / 100,
@@ -361,6 +363,7 @@ async function startServer() {
         // Transaction logs
         t.set(db.collection(TX_COL).doc(`wallet_debit_${bookingRef.id}`), {
           userId: uid,
+          user_id: uid,
           uid,
           type: "wallet_debit",
           amount: -amountNaira,
@@ -373,6 +376,7 @@ async function startServer() {
 
         t.set(db.collection(TX_COL).doc(`escrow_hold_${bookingRef.id}`), {
           userId: uid,
+          user_id: uid,
           uid,
           type: "escrow_hold",
           amount: -amountNaira,
@@ -438,6 +442,7 @@ async function startServer() {
 
         tx.set(db.collection(TX_COL).doc(`escrow_release_${bookingId}`), {
           userId: uid,
+          user_id: uid,
           uid,
           type: "escrow_release",
           amount: netToDriverNaira,

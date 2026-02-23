@@ -136,8 +136,11 @@ service cloud.firestore {
 
     // ----------------- TRANSACTIONS -----------------
     match /transactions/{txId} {
-      allow read: if request.auth != null
-        && (resource.data.uid == request.auth.uid || resource.data.user_id == request.auth.uid);
+      allow read: if request.auth != null && (
+        resource.data.uid == request.auth.uid || 
+        resource.data.user_id == request.auth.uid ||
+        resource.data.userId == request.auth.uid
+      );
       // Block client writes (server only)
       allow write: if false;
     }
