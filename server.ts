@@ -203,6 +203,7 @@ async function startServer() {
     if (!amountKobo || !email) return res.status(400).send("amountKobo and email required");
 
     const reference = `topup_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const callback_url = `${req.headers.origin || "http://localhost:3000"}/wallet?reference=${reference}`;
 
     try {
       const psRes = await fetch("https://api.paystack.co/transaction/initialize", {
@@ -215,6 +216,7 @@ async function startServer() {
           email,
           amount: String(amountKobo),
           reference,
+          callback_url,
           metadata: { type: "topup", uid: req.uid },
         }),
       });
@@ -258,6 +260,7 @@ async function startServer() {
       if (amountKobo < 100) return res.status(400).send("Invalid ride price");
 
       const reference = `book_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      const callback_url = `${req.headers.origin || "http://localhost:3000"}/wallet?reference=${reference}`;
 
       // Create booking in pending_payment status
       const bookingRef = db.collection("bookings").doc();
@@ -291,6 +294,7 @@ async function startServer() {
           email,
           amount: String(amountKobo),
           reference,
+          callback_url,
           metadata: { type: "booking", bookingId: bookingRef.id, rideId, uid: req.uid },
         }),
       });

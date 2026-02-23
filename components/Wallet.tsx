@@ -132,7 +132,7 @@ const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bo
               onClick={() => setShowModal('deposit')}
               className="flex-1 bg-white text-emerald-600 py-4 rounded-2xl font-black text-sm shadow-sm active:scale-95 transition-all"
             >
-              Add Funds
+              Add Funds / Transfer
             </button>
           )}
         </div>
@@ -144,10 +144,10 @@ const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bo
           <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-8 space-y-6 animate-in slide-in-from-bottom-10 duration-300">
             <div className="text-center space-y-2">
               <h3 className="text-2xl font-black">
-                {showModal === 'deposit' ? 'Add Funds' : 'Withdraw Earnings'}
+                {showModal === 'deposit' ? 'Add Funds / Transfer' : 'Withdraw Earnings'}
               </h3>
               <p className="text-gray-500 text-sm font-bold">
-                {showModal === 'deposit' ? 'Top up your RouteRider wallet' : 'Transfer to your linked bank account'}
+                {showModal === 'deposit' ? 'Top up via Card or Bank Transfer' : 'Transfer to your linked bank account'}
               </p>
             </div>
 
