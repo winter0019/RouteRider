@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import fetch from "node-fetch";
-import * as admin from "firebase-admin";
+import admin from "firebase-admin";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -10,8 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Initialize Firebase Admin
-// In this environment, we assume the necessary env vars are present for default initialization
-if (!admin.apps.length) {
+if (!admin.apps || admin.apps.length === 0) {
   admin.initializeApp();
 }
 
