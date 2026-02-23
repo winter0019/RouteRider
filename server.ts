@@ -28,6 +28,16 @@ async function startServer() {
   app.use(cors());
   app.use(express.json());
 
+  // Request logging
+  app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    next();
+  });
+
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", env: process.env.NODE_ENV });
+  });
+
   // --------- Auth middleware (Firebase ID token) ---------
   async function requireFirebaseAuth(req: any, res: any, next: any) {
     try {
@@ -45,7 +55,7 @@ async function startServer() {
   }
 
   // --------- Paystack: Initialize Topup ---------
-  app.post("/api/paystack/initialize", requireFirebaseAuth, async (req: any, res) => {
+  app.post(["/api/paystack/initialize", "/api/paystack/initialize/"], requireFirebaseAuth, async (req: any, res) => {
     const { amountKobo, email, meta } = req.body || {};
     if (!amountKobo || !email) return res.status(400).send("amountKobo and email required");
 
@@ -93,7 +103,7 @@ async function startServer() {
   });
 
   // --------- Paystack: Verify + Credit Wallet ---------
-  app.post("/api/paystack/verify", requireFirebaseAuth, async (req: any, res) => {
+  app.post(["/api/paystack/verify", "/api/paystack/verify/"], requireFirebaseAuth, async (req: any, res) => {
     const { reference } = req.body || {};
     if (!reference) return res.status(400).send("reference required");
 
@@ -149,7 +159,7 @@ async function startServer() {
   });
 
   // --------- Book with Wallet ---------
-  app.post("/api/wallet/book", requireFirebaseAuth, async (req: any, res) => {
+  app.post(["/api/wallet/book", "/api/wallet/book/"], requireFirebaseAuth, async (req: any, res) => {
     const { tripId } = req.body || {};
     if (!tripId) return res.status(400).send("tripId required");
 
@@ -268,7 +278,7 @@ async function startServer() {
   });
 
   // --------- Withdrawal ---------
-  app.post("/api/wallet/withdraw", requireFirebaseAuth, async (req: any, res) => {
+  app.post(["/api/wallet/withdraw", "/api/wallet/withdraw/"], requireFirebaseAuth, async (req: any, res) => {
     const { amountKobo } = req.body || {};
     if (!amountKobo) return res.status(400).send("amountKobo required");
 
@@ -315,6 +325,11 @@ async function startServer() {
       console.error("Withdrawal Error:", err);
       return res.status(400).send(err.message || "Withdrawal failed");
     }
+  });
+
+  // API Catch-all (to prevent falling through to SPA for missing API routes)
+  app.all("/api/*", (req, res) => {
+    res.status(404).json({ error: `API route ${req.method} ${req.url} not found` });
   });
 
   // Vite middleware for development
