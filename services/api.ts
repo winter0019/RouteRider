@@ -33,17 +33,20 @@ function requireAuth() {
   return auth.currentUser;
 }
 
-async function authedFetch(path: string, body?: any) {
+async function authedFetch(path: string, options: RequestInit = {}) {
   const user = requireAuth();
-  const token = await user.getIdToken();
+  // Force refresh token to ensure it's valid for the backend
+  const token = await user.getIdToken(true);
+
+  const headers = {
+    "Content-Type": "application/json",
+    ...(options.headers || {}),
+    Authorization: `Bearer ${token}`,
+  };
 
   const res = await fetch(`${API_BASE}/api${path}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(body || {}),
+    ...options,
+    headers,
   });
 
   if (!res.ok) {
@@ -241,15 +244,21 @@ export const api = {
   async initPaystackTopup(params: { amountNaira: number; email: string }) {
     const amountKobo = Math.round(params.amountNaira * 100);
     return authedFetch("/paystack/topup/initialize", {
-      amountKobo,
-      email: params.email,
+      method: "POST",
+      body: JSON.stringify({
+        amountKobo,
+        email: params.email,
+      }),
     });
   },
 
   async initPaystackBooking(params: { rideId: string; email: string }) {
     return authedFetch("/paystack/booking/initialize", {
-      rideId: params.rideId,
-      email: params.email,
+      method: "POST",
+      body: JSON.stringify({
+        rideId: params.rideId,
+        email: params.email,
+      }),
     });
   },
 
@@ -266,11 +275,16 @@ export const api = {
   // Booking with Wallet (server-side)
   // ----------------------------
   async bookTripWithWallet(rideId: string) {
-    return authedFetch("/bookings/wallet", { rideId });
+    return authedFetch("/bookings/wallet", {
+      method: "POST",
+      body: JSON.stringify({ rideId }),
+    });
   },
 
   async completeBooking(bookingId: string) {
-    return authedFetch(`/bookings/${bookingId}/complete`);
+    return authedFetch(`/bookings/${bookingId}/complete`, {
+      method: "POST",
+    });
   },
 
   async bookTrip(tripId: string, source: "rides" | "trips" = "rides"): Promise<void> {
@@ -444,6 +458,10 @@ export const api = {
     await deleteDoc(doc(db, col, tripId));
   },
 
+  async getMe() {
+    return authedFetch("/me", { method: "GET" });
+  },
+
   async getProfile(userId: string) {
     if (!db) return null;
     const docRef = doc(db, "users", userId);
@@ -456,7 +474,10 @@ export const api = {
   // ----------------------------
   async withdrawToBank(params: { amountNaira: number }) {
     const amountKobo = Math.round(params.amountNaira * 100);
-    return authedFetch("/wallet/withdraw", { amountKobo });
+    return authedFetch("/wallet/withdraw", {
+      method: "POST",
+      body: JSON.stringify({ amountKobo }),
+    });
   },
 
   async createTransaction(txData: any) {

@@ -21,7 +21,19 @@ process.on("unhandledRejection", (reason, promise) => {
 // Initialize Firebase Admin
 try {
   if (!admin.apps || admin.apps.length === 0) {
-    admin.initializeApp();
+    if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+      console.log("Initializing Firebase Admin with explicit credentials...");
+      admin.initializeApp({
+        credential: admin.credential.cert({
+          projectId: process.env.FIREBASE_PROJECT_ID,
+          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+          privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+        }),
+      });
+    } else {
+      console.log("Initializing Firebase Admin with default credentials...");
+      admin.initializeApp();
+    }
     console.log("Firebase Admin initialized successfully");
   }
 } catch (error) {
@@ -156,25 +168,34 @@ async function startServer() {
     next();
   });
 
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", env: process.env.NODE_ENV });
-  });
-
   // --------- Auth middleware (Firebase ID token) ---------
   async function requireFirebaseAuth(req: any, res: any, next: any) {
     try {
       const header = req.headers.authorization || "";
-      const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-      if (!token) return res.status(401).send("Missing auth token");
+      const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+      
+      if (!token) {
+        console.warn(`[${new Date().toISOString()}] Auth Failed: Missing token`);
+        return res.status(401).json({ error: "Missing auth token" });
+      }
 
       const decoded = await admin.auth().verifyIdToken(token);
       req.uid = decoded.uid;
+      req.user = decoded;
       next();
-    } catch (e) {
-      console.error("Auth Error:", e);
-      return res.status(401).send("Invalid auth token");
+    } catch (e: any) {
+      console.error(`[${new Date().toISOString()}] Auth Error:`, e.message);
+      return res.status(401).json({ error: "Invalid auth token" });
     }
   }
+
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", env: process.env.NODE_ENV });
+  });
+
+  app.get("/api/me", requireFirebaseAuth, (req: any, res) => {
+    res.json({ uid: req.uid, user: req.user });
+  });
 
   // --------- Paystack: Initialize Topup ---------
   app.post(["/api/paystack/topup/initialize", "/api/paystack/topup/initialize/"], requireFirebaseAuth, async (req: any, res) => {
