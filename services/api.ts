@@ -151,91 +151,25 @@ export const api = {
   // TRIPS
   // ----------------------------
   async getTrips(): Promise<Trip[]> {
-    if (!db) return [];
-
-    try {
-      const ridesQ = query(collection(db, RIDES_COL), orderBy("createdAt", "desc"));
-      const tripsQ = query(collection(db, TRIPS_COL), orderBy("createdAt", "desc"));
-
-      const [ridesSnap, tripsSnap] = await Promise.all([
-        getDocs(ridesQ).catch(() => null),
-        getDocs(tripsQ).catch(() => null),
-      ]);
-
-      const rides: Trip[] = ridesSnap
-        ? ridesSnap.docs.map((d) => mapRideDocToTrip(d.id, d.data()))
-        : [];
-
-      const trips: Trip[] = tripsSnap
-        ? tripsSnap.docs.map((d) => mapTripDocToTrip(d.id, d.data()))
-        : [];
-
-      // merge + sort newest
-      return [...rides, ...trips].sort((a, b) => {
-        const at = new Date(a.created_at).getTime();
-        const bt = new Date(b.created_at).getTime();
-        return bt - at;
-      });
-    } catch (err) {
-      console.error("Firestore Error (getTrips):", err);
-      return [];
-    }
+    const res = await fetch(`${API_BASE}/rides`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to fetch rides");
+    return data.map((d: any) => d.source === "trips" ? mapTripDocToTrip(d.id, d) : mapRideDocToTrip(d.id, d));
   },
 
   async getTrip(tripId: string, source: "rides" | "trips" = "rides"): Promise<Trip | null> {
-    if (!db) return null;
-    try {
-      const col = source === "trips" ? TRIPS_COL : RIDES_COL;
-      const snap = await getDoc(doc(db, col, tripId));
-      if (!snap.exists()) return null;
-      return source === "trips" 
-        ? mapTripDocToTrip(snap.id, snap.data())
-        : mapRideDocToTrip(snap.id, snap.data());
-    } catch (err) {
-      console.error("Firestore Error (getTrip):", err);
-      return null;
-    }
+    const res = await fetch(`${API_BASE}/rides/${tripId}?source=${source}`);
+    const data = await res.json();
+    if (!res.ok) return null;
+    return source === "trips" ? mapTripDocToTrip(data.id, data) : mapRideDocToTrip(data.id, data);
   },
 
   async postTrip(tripData: Partial<Trip>): Promise<Trip> {
-    if (!db || !auth?.currentUser) throw new Error("Not authenticated");
-
-    let origin = String(tripData.origin || "").trim();
-    let destination = String(tripData.destination || "").trim();
-
-    if (!origin || !destination) {
-      const routeStr = tripData.route || '';
-      if (routeStr.includes('→')) {
-        [origin, destination] = routeStr.split('→').map(s => s.trim());
-      } else if (routeStr.includes('->')) {
-        [origin, destination] = routeStr.split('->').map(s => s.trim());
-      }
-    }
-
-    const seatsAvailable = Math.max(1, Number(tripData.seats_available ?? 1));
-
-    const ride: any = {
-      carOwnerId: auth.currentUser.uid,
-      bookedBy: [],
-      seats_available: seatsAvailable,
-      seats_booked: 0,
-
-      origin: origin || 'Unknown',
-      destination: destination || 'Unknown',
-      time: tripData.departure_time || tripData.time || new Date().toISOString(),
-
-      driver_name: tripData.driver_name || "Verified Owner",
-      vehicle_name: tripData.vehicle_name || tripData.car_details || "Vehicle",
-      car_details: tripData.car_details || tripData.vehicle_name || "Vehicle",
-      price_per_seat: Number(tripData.price_per_seat ?? 0),
-
-      status: TripStatus.POSTED,
-      earnings: 0,
-      createdAt: Timestamp.now(),
-    };
-
-    const ref = await addDoc(collection(db, RIDES_COL), ride);
-    return mapRideDocToTrip(ref.id, ride);
+    const res = await authedFetch("/rides", {
+      method: "POST",
+      body: JSON.stringify(tripData),
+    });
+    return mapRideDocToTrip(res.id, res);
   },
 
   // ----------------------------
@@ -288,34 +222,11 @@ export const api = {
   },
 
   async bookTrip(tripId: string, source: "rides" | "trips" = "rides"): Promise<void> {
-    if (!db || !auth?.currentUser) throw new Error("Not authenticated");
-    const uid = auth.currentUser.uid;
-
-    const col = source === "trips" ? TRIPS_COL : RIDES_COL;
-    const ref = doc(db, col, tripId);
-
-    await runTransaction(db, async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists()) throw new Error("Trip not found");
-
-      const data: any = snap.data();
-      const bookedBy: string[] = Array.isArray(data.bookedBy) ? data.bookedBy : [];
-
-      const seatsAvailable = Number(data.seats_available ?? 0);
-      const currentBooked =
-        typeof data.seats_booked === "number" ? data.seats_booked : bookedBy.length;
-
-      if (bookedBy.includes(uid)) return;
-
-      if (currentBooked >= seatsAvailable) {
-        throw new Error("Trip is full");
-      }
-
-      tx.update(ref, {
-        bookedBy: arrayUnion(uid),
-        seats_booked: increment(1),
-      });
-    });
+    if (source === "trips") {
+      // trips still use client side for now if needed, but let's try to unify
+      return authedFetch(`/rides/${tripId}/book`, { method: "POST" });
+    }
+    return authedFetch(`/rides/${tripId}/book`, { method: "POST" });
   },
 
   async cancelBooking(tripId: string, source: "rides" | "trips" = "rides"): Promise<void> {
@@ -463,10 +374,14 @@ export const api = {
   },
 
   async getProfile(userId: string) {
-    if (!db) return null;
-    const docRef = doc(db, "users", userId);
-    const docSnap = await getDoc(docRef);
-    return docSnap.exists() ? docSnap.data() : null;
+    return authedFetch("/users/profile", { method: "GET" });
+  },
+
+  async updateProfile(data: any) {
+    return authedFetch("/users/profile", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
   },
 
   // ----------------------------
@@ -481,61 +396,13 @@ export const api = {
   },
 
   async createTransaction(txData: any) {
-    if (!db || !auth?.currentUser) throw new Error("Not authenticated");
-    const tx = {
-      user_id: auth.currentUser.uid,
-      uid: auth.currentUser.uid,
-      type: txData.type,
-      amount: Number(txData.amount),
-      description: txData.description,
-      createdAt: Timestamp.now(),
-    };
-    const ref = await addDoc(collection(db, TRANSACTIONS_COL), tx);
-    
-    const userRef = doc(db, "users", auth.currentUser.uid);
-    await updateDoc(userRef, {
-      wallet_balance: increment(tx.type === 'deposit' || tx.type === 'commission' ? tx.amount : -tx.amount)
+    return authedFetch("/transactions", {
+      method: "POST",
+      body: JSON.stringify(txData),
     });
-
-    return {
-      transaction_id: ref.id,
-      ...tx,
-      created_at: tx.createdAt.toDate().toISOString(),
-    };
   },
 
   async getTransactions(userId: string) {
-    if (!db) return [];
-    const user = auth?.currentUser;
-    if (!user) return [];
-    
-    // Safety: only allow querying own transactions from client
-    const targetId = userId || user.uid;
-    
-    try {
-      const q = query(
-        collection(db, TRANSACTIONS_COL),
-        where("user_id", "==", targetId),
-        orderBy("createdAt", "desc")
-      );
-      const snap = await getDocs(q);
-      return snap.docs.map(d => {
-        const data = d.data();
-        return {
-          transaction_id: d.id,
-          user_id: data.user_id || data.userId,
-          uid: data.uid || data.user_id || data.userId,
-          type: data.type,
-          amount: data.amount,
-          description: data.description,
-          created_at: toISO(data.createdAt),
-        };
-      }) as any[];
-    } catch (error: any) {
-      if (error.message?.includes("permissions")) {
-        console.error("Firestore Permission Error: Check if 'transactions' collection exists and rules allow read for user_id.");
-      }
-      throw error;
-    }
-  }
+    return authedFetch("/transactions", { method: "GET" });
+  },
 };

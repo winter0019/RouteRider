@@ -52,6 +52,7 @@ if (PAYSTACK_SECRET === "sk_test_placeholder") {
 const WALLETS_COL = "wallets";
 const TX_COL = "transactions";
 const RIDES_COL = "rides";
+const TRIPS_COL = "trips";
 
 async function startServer() {
   const app = express();
@@ -185,16 +186,195 @@ async function startServer() {
       next();
     } catch (e: any) {
       console.error(`[${new Date().toISOString()}] Auth Error:`, e.message);
-      return res.status(401).json({ error: "Invalid auth token" });
+      if (e.code === 'auth/id-token-expired') {
+        return res.status(401).json({ error: "Token expired", code: "EXPIRED" });
+      }
+      return res.status(401).json({ error: "Invalid auth token", detail: e.message });
     }
   }
 
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", env: process.env.NODE_ENV });
+  // --------- Rides ---------
+  app.get("/api/rides", async (req, res) => {
+    try {
+      const ridesSnap = await db.collection(RIDES_COL).orderBy("createdAt", "desc").get();
+      const tripsSnap = await db.collection(TRIPS_COL).orderBy("createdAt", "desc").get();
+
+      const rides = ridesSnap.docs.map(d => ({
+        id: d.id,
+        trip_id: d.id,
+        source: "rides",
+        ...d.data(),
+        created_at: d.data().createdAt?.toDate?.()?.toISOString() || new Date().toISOString()
+      }));
+
+      const trips = tripsSnap.docs.map(d => ({
+        id: d.id,
+        trip_id: d.id,
+        source: "trips",
+        ...d.data(),
+        created_at: d.data().createdAt?.toDate?.()?.toISOString() || new Date().toISOString()
+      }));
+
+      const all = [...rides, ...trips].sort((a: any, b: any) => {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+
+      res.json(all);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/rides", requireFirebaseAuth, async (req: any, res) => {
+    try {
+      const tripData = req.body;
+      const ref = await db.collection(RIDES_COL).add({
+        ...tripData,
+        carOwnerId: req.uid,
+        driver_id: req.uid,
+        bookedBy: [],
+        seats_booked: 0,
+        status: "posted",
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      res.json({ id: ref.id, ...tripData });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/rides/:rideId", async (req, res) => {
+    try {
+      const { rideId } = req.params;
+      const { source } = req.query;
+      const col = source === "trips" ? TRIPS_COL : RIDES_COL;
+      const snap = await db.collection(col).doc(rideId).get();
+      if (!snap.exists) return res.status(404).json({ error: "Ride not found" });
+      res.json({
+        id: snap.id,
+        trip_id: snap.id,
+        source: source || "rides",
+        ...snap.data(),
+        created_at: snap.data()?.createdAt?.toDate?.()?.toISOString() || new Date().toISOString()
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   app.get("/api/me", requireFirebaseAuth, (req: any, res) => {
     res.json({ uid: req.uid, user: req.user });
+  });
+
+  // --------- User Profile Management ---------
+  app.get("/api/users/profile", requireFirebaseAuth, async (req: any, res) => {
+    try {
+      const snap = await db.collection("users").doc(req.uid).get();
+      if (!snap.exists) return res.status(404).json({ error: "Profile not found" });
+      res.json(snap.data());
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/users/profile", requireFirebaseAuth, async (req: any, res) => {
+    try {
+      const data = req.body;
+      await db.collection("users").doc(req.uid).set({
+        ...data,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // --------- Unified Booking Route ---------
+  app.post("/api/rides/:rideId/book", requireFirebaseAuth, async (req: any, res) => {
+    const { rideId } = req.params;
+    const uid = req.uid;
+
+    try {
+      await db.runTransaction(async (t) => {
+        const rideRef = db.collection(RIDES_COL).doc(rideId);
+        const rideSnap = await t.get(rideRef);
+        if (!rideSnap.exists) throw new Error("Ride not found");
+
+        const ride = rideSnap.data()!;
+        const bookedBy = Array.isArray(ride.bookedBy) ? ride.bookedBy : [];
+        if (bookedBy.includes(uid)) return; // Already booked
+
+        const seatsAvailable = Number(ride.seats_available || 0);
+        const seatsBooked = Number(ride.seats_booked || 0);
+
+        if (seatsBooked >= seatsAvailable) throw new Error("Ride is full");
+
+        t.update(rideRef, {
+          bookedBy: admin.firestore.FieldValue.arrayUnion(uid),
+          seats_booked: admin.firestore.FieldValue.increment(1)
+        });
+
+        // Create a basic booking record
+        const bookingRef = db.collection("bookings").doc();
+        t.set(bookingRef, {
+          rideId,
+          trip_id: rideId,
+          passengerId: uid,
+          passenger_id: uid,
+          status: "pending",
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      });
+
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("Booking Error:", err);
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // --------- Transactions ---------
+  app.get("/api/transactions", requireFirebaseAuth, async (req: any, res) => {
+    try {
+      const q = db.collection(TX_COL)
+        .where("user_id", "==", req.uid)
+        .orderBy("createdAt", "desc");
+      
+      const snap = await q.get();
+      const txs = snap.docs.map(d => ({
+        transaction_id: d.id,
+        ...d.data(),
+        created_at: d.data().createdAt?.toDate?.()?.toISOString() || new Date().toISOString()
+      }));
+      res.json(txs);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/transactions", requireFirebaseAuth, async (req: any, res) => {
+    try {
+      const { type, amount, description } = req.body;
+      const tx = {
+        user_id: req.uid,
+        uid: req.uid,
+        type,
+        amount: Number(amount),
+        description,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+      const ref = await db.collection(TX_COL).add(tx);
+      
+      const userRef = db.collection("users").doc(req.uid);
+      await userRef.update({
+        wallet_balance: admin.firestore.FieldValue.increment(type === 'deposit' || type === 'commission' ? tx.amount : -tx.amount)
+      });
+
+      res.json({ transaction_id: ref.id, ...tx });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // --------- Paystack: Initialize Topup ---------

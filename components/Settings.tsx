@@ -2,6 +2,7 @@
 import React, { useState, useRef } from 'react';
 import { DriverProfile } from '../types';
 import { ICONS, COLORS } from '../constants';
+import { api } from '../services/api';
 
 interface SettingsProps {
   profile: DriverProfile;
@@ -157,6 +158,23 @@ const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate, us
               <span className="text-emerald-600 font-black text-sm uppercase">Active</span>
             </div>
           </div>
+        </section>
+
+        <section className="space-y-2">
+          <h3 className="px-1 text-[10px] font-black text-gray-400 uppercase tracking-widest">Debug Tools</h3>
+          <button 
+            onClick={async () => {
+              try {
+                const res = await api.getMe();
+                alert(`Backend Connection Success!\nUID: ${res.uid}\nUser: ${res.user?.email || 'Anonymous'}`);
+              } catch (err: any) {
+                alert(`Backend Connection Failed:\n${err.message}`);
+              }
+            }}
+            className="w-full p-4 bg-slate-100 text-slate-600 rounded-2xl font-black text-xs flex items-center justify-center gap-2 hover:bg-slate-200 active:scale-95 transition-all"
+          >
+            Test Backend Connection
+          </button>
         </section>
 
         <button onClick={onLogout} className="w-full p-5 bg-red-50 text-red-600 rounded-2xl font-black flex items-center justify-center gap-2 hover:bg-red-100 active:scale-95 transition-all">

@@ -1,46 +1,30 @@
 import { 
   collection, 
   doc, 
-  setDoc, 
-  getDoc, 
   getDocs, 
   addDoc, 
   updateDoc, 
   deleteDoc, 
-  query, 
-  where, 
   arrayUnion, 
   arrayRemove,
   Timestamp
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
-import { Trip, TripStatus, User } from '../types';
+import { TripStatus } from '../types';
+import { api } from './api';
 
 export const firestoreService = {
-  // ----------------- Users -----------------
+  // ----------------- Users (Now via Backend) -----------------
   async createUserProfile(userId: string, data: any) {
-    if (!db) return;
-    await setDoc(doc(db, 'users', userId), {
-      ...data,
-      userId,
-      createdAt: Timestamp.now()
-    });
+    return api.updateProfile(data);
   },
 
   async getUserProfile(userId: string) {
-    if (!db) return null;
-    const docRef = doc(db, 'users', userId);
-    const docSnap = await getDoc(docRef);
-    return docSnap.exists() ? docSnap.data() : null;
+    return api.getProfile(userId);
   },
 
   async updateUserProfile(userId: string, data: any) {
-    if (!db) return;
-    const docRef = doc(db, 'users', userId);
-    await updateDoc(docRef, {
-      ...data,
-      updatedAt: Timestamp.now()
-    });
+    return api.updateProfile(data);
   },
 
   // ----------------- Rides (Trips) -----------------
