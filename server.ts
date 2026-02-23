@@ -9,20 +9,44 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught Exception:", err);
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+});
+
 // Initialize Firebase Admin
-if (!admin.apps || admin.apps.length === 0) {
-  admin.initializeApp();
+try {
+  if (!admin.apps || admin.apps.length === 0) {
+    admin.initializeApp();
+    console.log("Firebase Admin initialized successfully");
+  }
+} catch (error) {
+  console.error("Firebase Admin initialization error:", error);
 }
 
 const db = admin.firestore();
 const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY || "sk_test_placeholder";
+
+if (PAYSTACK_SECRET === "sk_test_placeholder") {
+  console.warn("WARNING: PAYSTACK_SECRET_KEY is not set, using placeholder.");
+} else {
+  console.log(`PAYSTACK_SECRET_KEY is set (starts with ${PAYSTACK_SECRET.slice(0, 7)}...)`);
+}
+
 const WALLETS_COL = "wallets";
 const TX_COL = "transactions";
 const RIDES_COL = "rides";
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT || 3000;
+
+  console.log(`[${new Date().toISOString()}] Starting server...`);
+  console.log(`[${new Date().toISOString()}] Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`[${new Date().toISOString()}] Port: ${PORT}`);
 
   app.use(cors());
   app.use(express.json());
