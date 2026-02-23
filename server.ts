@@ -327,7 +327,7 @@ async function startServer() {
   });
 
   // API Catch-all (to prevent falling through to SPA for missing API routes)
-  app.all("/api/:path(.*)", (req, res) => {
+  app.all(/^\/api\/.*/, (req, res) => {
     res.status(404).json({ error: `API route ${req.method} ${req.url} not found` });
   });
 
@@ -340,7 +340,7 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     app.use(express.static(path.join(__dirname, "dist")));
-    app.get("/:path(.*)", (req, res) => {
+    app.get(/.*/, (req, res) => {
       res.sendFile(path.join(__dirname, "dist", "index.html"));
     });
   }
