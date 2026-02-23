@@ -67,39 +67,44 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
     setViewingPassenger(null);
   };
 
-  const completeTrip = () => {
+  const [isCompleting, setIsCompleting] = useState(false);
+
+  const completeTrip = async () => {
     if (!activeTrip) return;
+    setIsCompleting(true);
 
-    const totalRevenue = activeTrip.seats_booked * ROUTES.SUGGESTED_PRICE_PER_SEAT;
-    const netEarnings = totalRevenue - ROUTES.COMMISSION_PER_TRIP;
+    try {
+      // Release escrow for all accepted bookings
+      const accepted = bookings.filter(b => b.status === BookingStatus.ACCEPTED);
+      for (const booking of accepted) {
+        await api.completeBooking(booking.booking_id);
+      }
 
-    const newTx: Transaction = {
-      transaction_id: 'tx-' + Math.random().toString(36).substr(2, 5),
-      user_id: activeTrip.driver_id,
-      type: 'deposit',
-      amount: netEarnings,
-      description: `Earnings from trip ${activeTrip.trip_id}`,
-      created_at: new Date().toISOString(),
-    };
+      // Remove from Firestore
+      await api.deleteTrip(activeTrip.trip_id);
 
-    setTransactions(prev => [newTx, ...prev]);
-    setProfile(prev => prev ? {
-      ...prev,
-      wallet_balance: prev.wallet_balance + netEarnings,
-      total_earnings: prev.total_earnings + netEarnings,
-      trip_count: prev.trip_count + 1
-    } : null);
+      // Refresh profile to get new balance
+      const updatedProfile = await api.getProfile(activeTrip.driver_id);
+      if (updatedProfile) {
+        setProfile(updatedProfile as any);
+        localStorage.setItem("rr_profile", JSON.stringify(updatedProfile));
+      }
 
-    // Remove from Firestore
-    api.deleteTrip(activeTrip.trip_id).catch(err => console.error("Failed to delete trip from Firestore:", err));
-
-    setActiveTrip(null);
-    setBookings([]);
-    
-    // Also clear from global list
-    const trips = JSON.parse(localStorage.getItem('rr_all_trips') || '[]');
-    const updatedTrips = trips.filter((t: any) => t.trip_id !== activeTrip.trip_id);
-    localStorage.setItem('rr_all_trips', JSON.stringify(updatedTrips));
+      setActiveTrip(null);
+      setBookings([]);
+      
+      // Also clear from global list
+      const trips = JSON.parse(localStorage.getItem('rr_all_trips') || '[]');
+      const updatedTrips = trips.filter((t: any) => t.trip_id !== activeTrip.trip_id);
+      localStorage.setItem('rr_all_trips', JSON.stringify(updatedTrips));
+      
+      alert("Trip completed! Earnings have been added to your wallet.");
+    } catch (error) {
+      console.error("Failed to complete trip:", error);
+      alert("Failed to complete trip. Please try again.");
+    } finally {
+      setIsCompleting(false);
+    }
   };
 
   const pendingBookings = bookings.filter(b => b.status === BookingStatus.PENDING);
@@ -115,9 +120,10 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
         {activeTrip && activeTrip.seats_booked > 0 && (
           <button 
             onClick={completeTrip}
-            className="px-4 py-2 bg-emerald-100 text-emerald-700 rounded-xl font-bold text-xs"
+            disabled={isCompleting}
+            className="px-4 py-2 bg-emerald-100 text-emerald-700 rounded-xl font-bold text-xs disabled:opacity-50"
           >
-            Complete Trip
+            {isCompleting ? 'Processing...' : 'Complete Trip'}
           </button>
         )}
       </header>

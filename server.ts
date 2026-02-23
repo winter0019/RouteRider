@@ -5,6 +5,7 @@ import admin from "firebase-admin";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
+import crypto from "crypto";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -49,6 +50,102 @@ async function startServer() {
   console.log(`[${new Date().toISOString()}] Port: ${PORT}`);
 
   app.use(cors());
+
+  // --------- Paystack Webhook (Needs Raw Body) ---------
+  app.post("/api/paystack/webhook", express.raw({ type: "application/json" }), async (req: any, res) => {
+    const sig = req.headers["x-paystack-signature"] as string | undefined;
+    const raw = req.body?.toString?.("utf8") ?? "";
+
+    if (!sig) return res.status(401).send("Missing signature");
+
+    const hash = crypto.createHmac("sha512", PAYSTACK_SECRET).update(raw).digest("hex");
+    if (hash !== sig) return res.status(401).send("Invalid signature");
+
+    const event = JSON.parse(raw);
+    if (event?.event !== "charge.success") return res.sendStatus(200);
+
+    const reference = event?.data?.reference;
+    if (!reference) return res.sendStatus(200);
+
+    try {
+      const intentSnap = await db.collection("payment_intents").where("reference", "==", reference).limit(1).get();
+      if (intentSnap.empty) return res.sendStatus(200);
+
+      const intentDoc = intentSnap.docs[0];
+      const intent = intentDoc.data();
+      if (intent.status === "success") return res.sendStatus(200);
+
+      await db.runTransaction(async (tx) => {
+        tx.update(intentDoc.ref, { 
+          status: "success", 
+          paidAt: admin.firestore.FieldValue.serverTimestamp() 
+        });
+
+        if (intent.type === "topup") {
+          const userRef = db.collection("users").doc(intent.userId);
+          const walletRef = db.collection(WALLETS_COL).doc(intent.userId);
+
+          tx.update(userRef, { 
+            wallet_balance: admin.firestore.FieldValue.increment(intent.amountKobo / 100) 
+          });
+          tx.set(walletRef, {
+            balanceKobo: admin.firestore.FieldValue.increment(intent.amountKobo),
+            balance: admin.firestore.FieldValue.increment(intent.amountKobo / 100),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+
+          tx.set(db.collection(TX_COL).doc(reference), {
+            userId: intent.userId,
+            uid: intent.userId,
+            type: "topup",
+            amount: intent.amountKobo / 100,
+            amountKobo: intent.amountKobo,
+            status: "success",
+            reference,
+            description: "Wallet Topup (Paystack)",
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        }
+
+        if (intent.type === "booking") {
+          const bookingRef = db.collection("bookings").doc(intent.bookingId);
+          const bookingSnap = await tx.get(bookingRef);
+          if (!bookingSnap.exists) throw new Error("Booking not found");
+
+          const booking = bookingSnap.data()!;
+          
+          // Create escrow
+          tx.set(db.collection("escrows").doc(), {
+            bookingId: intent.bookingId,
+            amountKobo: intent.amountKobo,
+            status: "held",
+            source: "paystack",
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+
+          tx.update(bookingRef, { status: "escrowed" });
+
+          tx.set(db.collection(TX_COL).doc(`escrow_${intent.bookingId}`), {
+            userId: booking.passenger_id || booking.passengerId,
+            uid: booking.passenger_id || booking.passengerId,
+            type: "escrow_hold",
+            amount: -intent.amountKobo / 100,
+            amountKobo: -intent.amountKobo,
+            status: "success",
+            reference,
+            bookingId: intent.bookingId,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        }
+      });
+
+      return res.sendStatus(200);
+    } catch (err) {
+      console.error("Webhook Error:", err);
+      return res.status(500).send("Webhook processing failed");
+    }
+  });
+
   app.use(express.json());
 
   // Request logging
@@ -78,23 +175,86 @@ async function startServer() {
   }
 
   // --------- Paystack: Initialize Topup ---------
-  app.post(["/api/paystack/initialize", "/api/paystack/initialize/"], requireFirebaseAuth, async (req: any, res) => {
-    const { amountKobo, email, meta } = req.body || {};
+  app.post(["/api/paystack/topup/initialize", "/api/paystack/topup/initialize/"], requireFirebaseAuth, async (req: any, res) => {
+    const { amountKobo, email } = req.body || {};
     if (!amountKobo || !email) return res.status(400).send("amountKobo and email required");
 
-    const reference = `rr_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const reference = `topup_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 
     try {
-      await db.collection(TX_COL).doc(reference).set({
-        uid: req.uid,
-        user_id: req.uid, // compatibility
+      const psRes = await fetch("https://api.paystack.co/transaction/initialize", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${PAYSTACK_SECRET}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          amount: String(amountKobo),
+          reference,
+          metadata: { type: "topup", uid: req.uid },
+        }),
+      });
+
+      const data = await psRes.json();
+      if (!data.status) return res.status(400).json(data);
+
+      await db.collection("payment_intents").add({
+        userId: req.uid,
         type: "topup",
-        amount: Number(amountKobo) / 100, // Naira for display/legacy
         amountKobo: Number(amountKobo),
         status: "pending",
         reference,
-        description: "Wallet Topup",
-        meta: meta || {},
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return res.json({
+        authorization_url: data.data.authorization_url,
+        reference: data.data.reference,
+      });
+    } catch (err) {
+      console.error("Paystack Topup Init Error:", err);
+      return res.status(500).send("Internal Server Error");
+    }
+  });
+
+  // --------- Paystack: Initialize Booking ---------
+  app.post(["/api/paystack/booking/initialize", "/api/paystack/booking/initialize/"], requireFirebaseAuth, async (req: any, res) => {
+    const { rideId, email } = req.body || {};
+    if (!rideId || !email) return res.status(400).send("rideId and email required");
+
+    try {
+      const rideRef = db.collection(RIDES_COL).doc(rideId);
+      const rideSnap = await rideRef.get();
+      if (!rideSnap.exists) return res.status(404).send("Ride not found");
+
+      const ride = rideSnap.data()!;
+      const amountNaira = Number(ride.price_per_seat || 0);
+      const amountKobo = Math.round(amountNaira * 100);
+
+      if (amountKobo < 100) return res.status(400).send("Invalid ride price");
+
+      const reference = `book_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+      // Create booking in pending_payment status
+      const bookingRef = db.collection("bookings").doc();
+      const commissionRate = 0.1;
+      const commission = Math.round(amountKobo * commissionRate);
+      const netToDriver = amountKobo - commission;
+
+      await bookingRef.set({
+        rideId,
+        trip_id: rideId,
+        driverId: ride.carOwnerId,
+        driver_id: ride.carOwnerId,
+        passengerId: req.uid,
+        passenger_id: req.uid,
+        amountKobo,
+        amount_paid: amountNaira,
+        commissionKobo: commission,
+        netToDriverKobo: netToDriver,
+        payMethod: "paystack",
+        status: "pending_payment",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
@@ -108,195 +268,190 @@ async function startServer() {
           email,
           amount: String(amountKobo),
           reference,
-          metadata: meta || {},
+          metadata: { type: "booking", bookingId: bookingRef.id, rideId, uid: req.uid },
         }),
       });
 
       const data = await psRes.json();
       if (!data.status) return res.status(400).json(data);
 
+      await db.collection("payment_intents").add({
+        userId: req.uid,
+        type: "booking",
+        amountKobo,
+        status: "pending",
+        reference,
+        bookingId: bookingRef.id,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
       return res.json({
         authorization_url: data.data.authorization_url,
         reference: data.data.reference,
+        bookingId: bookingRef.id,
       });
     } catch (err) {
-      console.error("Paystack Init Error:", err);
+      console.error("Paystack Booking Init Error:", err);
       return res.status(500).send("Internal Server Error");
     }
   });
 
-  // --------- Paystack: Verify + Credit Wallet ---------
-  app.post(["/api/paystack/verify", "/api/paystack/verify/"], requireFirebaseAuth, async (req: any, res) => {
-    const { reference } = req.body || {};
-    if (!reference) return res.status(400).send("reference required");
-
-    try {
-      const psRes = await fetch(`https://api.paystack.co/transaction/verify/${reference}`, {
-        method: "GET",
-        headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` },
-      });
-
-      const v = await psRes.json();
-      if (!v.status) return res.status(400).json(v);
-      if (v.data.status !== "success") return res.status(400).send("Payment not successful");
-
-      const amountKobo = Number(v.data.amount || 0);
-      const uid = req.uid;
-
-      await db.runTransaction(async (t) => {
-        const txRef = db.collection(TX_COL).doc(reference);
-        const txSnap = await t.get(txRef);
-        if (txSnap.exists && txSnap.data()?.status === "success") return;
-
-        const walletRef = db.collection(WALLETS_COL).doc(uid);
-        const userRef = db.collection("users").doc(uid);
-        
-        const wSnap = await t.get(walletRef);
-        const currentKobo = wSnap.exists ? Number(wSnap.data()?.balanceKobo || 0) : 0;
-        
-        const newBalanceKobo = currentKobo + amountKobo;
-        const newBalanceNaira = newBalanceKobo / 100;
-
-        t.set(walletRef, { 
-          balanceKobo: newBalanceKobo, 
-          balance: newBalanceNaira,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp() 
-        }, { merge: true });
-        
-        t.update(userRef, {
-          wallet_balance: newBalanceNaira
-        });
-
-        t.set(txRef, { 
-          status: "success", 
-          verifiedAt: admin.firestore.FieldValue.serverTimestamp(), 
-          amountKobo 
-        }, { merge: true });
-      });
-
-      return res.json({ ok: true, reference });
-    } catch (err) {
-      console.error("Paystack Verify Error:", err);
-      return res.status(500).send("Internal Server Error");
-    }
-  });
-
-  // --------- Book with Wallet ---------
-  app.post(["/api/wallet/book", "/api/wallet/book/"], requireFirebaseAuth, async (req: any, res) => {
-    const { tripId } = req.body || {};
-    if (!tripId) return res.status(400).send("tripId required");
+  // --------- Book with Wallet (Escrowed) ---------
+  app.post(["/api/bookings/wallet", "/api/bookings/wallet/"], requireFirebaseAuth, async (req: any, res) => {
+    const { rideId } = req.body || {};
+    if (!rideId) return res.status(400).send("rideId required");
 
     const uid = req.uid;
 
     try {
       await db.runTransaction(async (t) => {
-        const rideRef = db.collection(RIDES_COL).doc(tripId);
-        const rideSnap = await t.get(rideRef);
+        const userRef = db.collection("users").doc(uid);
+        const walletRef = db.collection(WALLETS_COL).doc(uid);
+        const rideRef = db.collection(RIDES_COL).doc(rideId);
+
+        const [userSnap, walletSnap, rideSnap] = await Promise.all([t.get(userRef), t.get(walletRef), t.get(rideRef)]);
         if (!rideSnap.exists) throw new Error("Ride not found");
 
         const ride = rideSnap.data()!;
-        const bookedBy: string[] = Array.isArray(ride.bookedBy) ? ride.bookedBy : [];
-        if (bookedBy.includes(uid)) throw new Error("Already booked");
+        const amountNaira = Number(ride.price_per_seat || 0);
+        const amountKobo = Math.round(amountNaira * 100);
 
-        const seatsAvailable = Number(ride.seats_available || 0);
-        const seatsBooked = Number(ride.seats_booked || bookedBy.length || 0);
-        if (seatsBooked >= seatsAvailable) throw new Error("Ride is full");
+        const currentBalKobo = walletSnap.exists ? Number(walletSnap.data()?.balanceKobo || 0) : 0;
+        if (currentBalKobo < amountKobo) throw new Error("Insufficient wallet balance");
 
-        const priceNaira = Number(ride.price_per_seat || 0);
-        const priceKobo = Math.round(priceNaira * 100);
-        if (priceKobo <= 0) throw new Error("Invalid price");
+        const commissionRate = 0.1;
+        const commission = Math.round(amountKobo * commissionRate);
+        const netToDriver = amountKobo - commission;
 
-        const driverId = String(ride.carOwnerId);
-        if (!driverId) throw new Error("Missing driverId");
-
-        const passengerWalletRef = db.collection(WALLETS_COL).doc(uid);
-        const driverWalletRef = db.collection(WALLETS_COL).doc(driverId);
-        const passengerUserRef = db.collection("users").doc(uid);
-        const driverUserRef = db.collection("users").doc(driverId);
-
-        const pSnap = await t.get(passengerWalletRef);
-        const pBalKobo = pSnap.exists ? Number(pSnap.data()?.balanceKobo || 0) : 0;
-        if (pBalKobo < priceKobo) throw new Error("Insufficient wallet balance");
-
-        // Deduct passenger
-        const newPBalKobo = pBalKobo - priceKobo;
-        t.set(passengerWalletRef, {
-          balanceKobo: newPBalKobo,
-          balance: newPBalKobo / 100,
+        // Debit passenger
+        t.update(userRef, { wallet_balance: admin.firestore.FieldValue.increment(-amountNaira) });
+        t.set(walletRef, {
+          balanceKobo: admin.firestore.FieldValue.increment(-amountKobo),
+          balance: admin.firestore.FieldValue.increment(-amountNaira),
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         }, { merge: true });
-        
-        t.update(passengerUserRef, {
-          wallet_balance: newPBalKobo / 100
-        });
 
-        // Credit driver
-        const dSnap = await t.get(driverWalletRef);
-        const dBalKobo = dSnap.exists ? Number(dSnap.data()?.balanceKobo || 0) : 0;
-        const newDBalKobo = dBalKobo + priceKobo;
-
-        t.set(driverWalletRef, {
-          balanceKobo: newDBalKobo,
-          balance: newDBalKobo / 100,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
-        
-        t.update(driverUserRef, {
-          wallet_balance: newDBalKobo / 100
-        });
-
-        // Update ride booking
-        t.update(rideRef, {
-          bookedBy: admin.firestore.FieldValue.arrayUnion(uid),
-          seats_booked: seatsBooked + 1,
-        });
-
-        // Create Booking document
+        // Create booking
         const bookingRef = db.collection("bookings").doc();
         t.set(bookingRef, {
-          trip_id: tripId,
-          driver_id: driverId,
+          rideId,
+          trip_id: rideId,
+          driverId: ride.carOwnerId,
+          driver_id: ride.carOwnerId,
+          passengerId: uid,
           passenger_id: uid,
-          passenger_name: "Passenger", // ideally fetch from user profile
-          seats_booked: 1,
-          amount_paid: priceNaira,
-          status: "PENDING",
+          amountKobo,
+          amount_paid: amountNaira,
+          commissionKobo: commission,
+          netToDriverKobo: netToDriver,
+          payMethod: "wallet",
+          status: "escrowed",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // Create escrow
+        t.set(db.collection("escrows").doc(), {
+          bookingId: bookingRef.id,
+          amountKobo,
+          status: "held",
+          source: "wallet",
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
         // Transaction logs
-        const ref = `ride_${tripId}_${Date.now()}_${uid.slice(0, 6)}`;
-        t.set(db.collection(TX_COL).doc(ref), {
+        t.set(db.collection(TX_COL).doc(`wallet_debit_${bookingRef.id}`), {
+          userId: uid,
           uid,
-          user_id: uid,
-          type: "withdrawal", // payment is a withdrawal from wallet
-          amount: priceNaira,
-          amountKobo: priceKobo,
+          type: "wallet_debit",
+          amount: -amountNaira,
+          amountKobo: -amountKobo,
           status: "success",
-          description: `Payment for Trip to ${ride.destination}`,
-          rideId: tripId,
-          driverId,
+          bookingId: bookingRef.id,
+          description: `Booking for ride to ${ride.destination}`,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
-        t.set(db.collection(TX_COL).doc(`${ref}_driver`), {
-          uid: driverId,
-          user_id: driverId,
-          type: "deposit", // earning is a deposit to wallet
-          amount: priceNaira,
-          amountKobo: priceKobo,
+        t.set(db.collection(TX_COL).doc(`escrow_hold_${bookingRef.id}`), {
+          userId: uid,
+          uid,
+          type: "escrow_hold",
+          amount: -amountNaira,
+          amountKobo: -amountKobo,
           status: "success",
-          description: `Earning from Trip to ${ride.destination}`,
-          rideId: tripId,
-          passengerId: uid,
+          bookingId: bookingRef.id,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        
+        // Update ride seats
+        t.update(rideRef, {
+          bookedBy: admin.firestore.FieldValue.arrayUnion(uid),
+          seats_booked: admin.firestore.FieldValue.increment(1),
+        });
+      });
+
+      return res.json({ ok: true });
+    } catch (err: any) {
+      console.error("Wallet Booking Error:", err);
+      return res.status(400).send(err.message || "Booking failed");
+    }
+  });
+
+  // --------- Complete Booking (Release Escrow) ---------
+  app.post(["/api/bookings/:bookingId/complete", "/api/bookings/:bookingId/complete/"], requireFirebaseAuth, async (req: any, res) => {
+    const { bookingId } = req.params;
+    const uid = req.uid;
+
+    try {
+      await db.runTransaction(async (tx) => {
+        const bookingRef = db.collection("bookings").doc(bookingId);
+        const bookingSnap = await tx.get(bookingRef);
+        if (!bookingSnap.exists) throw new Error("Booking not found");
+
+        const booking = bookingSnap.data()!;
+        if (booking.driverId !== uid && booking.driver_id !== uid) throw new Error("Unauthorized");
+        if (booking.status !== "escrowed") throw new Error("Booking not in escrowed state");
+
+        // Find escrow
+        const escSnap = await db.collection("escrows").where("bookingId", "==", bookingId).limit(1).get();
+        if (escSnap.empty) throw new Error("Escrow record not found");
+        const escrowDoc = escSnap.docs[0];
+        const escrow = escrowDoc.data();
+
+        if (escrow.status !== "held") throw new Error("Escrow already released or refunded");
+
+        const netToDriverKobo = booking.netToDriverKobo;
+        const netToDriverNaira = netToDriverKobo / 100;
+
+        // Credit driver
+        const driverRef = db.collection("users").doc(uid);
+        const driverWalletRef = db.collection(WALLETS_COL).doc(uid);
+
+        tx.update(driverRef, { wallet_balance: admin.firestore.FieldValue.increment(netToDriverNaira) });
+        tx.set(driverWalletRef, {
+          balanceKobo: admin.firestore.FieldValue.increment(netToDriverKobo),
+          balance: admin.firestore.FieldValue.increment(netToDriverNaira),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+
+        tx.update(bookingRef, { status: "completed", completedAt: admin.firestore.FieldValue.serverTimestamp() });
+        tx.update(escrowDoc.ref, { status: "released", releasedAt: admin.firestore.FieldValue.serverTimestamp() });
+
+        tx.set(db.collection(TX_COL).doc(`escrow_release_${bookingId}`), {
+          userId: uid,
+          uid,
+          type: "escrow_release",
+          amount: netToDriverNaira,
+          amountKobo: netToDriverKobo,
+          status: "success",
+          bookingId,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
       });
 
       return res.json({ ok: true });
     } catch (err: any) {
-      console.error("Booking Error:", err);
-      return res.status(400).send(err.message || "Booking failed");
+      console.error("Complete Booking Error:", err);
+      return res.status(400).send(err.message || "Failed to complete booking");
     }
   });
 

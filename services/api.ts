@@ -238,17 +238,19 @@ export const api = {
   // ----------------------------
   // WALLET: Passenger Top-up (Paystack)
   // ----------------------------
-  async initPaystackTopup(params: { amountNaira: number; email: string; meta?: any }) {
+  async initPaystackTopup(params: { amountNaira: number; email: string }) {
     const amountKobo = Math.round(params.amountNaira * 100);
-    return authedFetch("/paystack/initialize", {
+    return authedFetch("/paystack/topup/initialize", {
       amountKobo,
       email: params.email,
-      meta: params.meta || {},
     });
   },
 
-  async verifyPaystackTopup(reference: string) {
-    return authedFetch("/paystack/verify", { reference });
+  async initPaystackBooking(params: { rideId: string; email: string }) {
+    return authedFetch("/paystack/booking/initialize", {
+      rideId: params.rideId,
+      email: params.email,
+    });
   },
 
   async getMyWallet() {
@@ -263,8 +265,12 @@ export const api = {
   // ----------------------------
   // Booking with Wallet (server-side)
   // ----------------------------
-  async bookTripWithWallet(tripId: string) {
-    return authedFetch("/wallet/book", { tripId });
+  async bookTripWithWallet(rideId: string) {
+    return authedFetch("/bookings/wallet", { rideId });
+  },
+
+  async completeBooking(bookingId: string) {
+    return authedFetch(`/bookings/${bookingId}/complete`);
   },
 
   async bookTrip(tripId: string, source: "rides" | "trips" = "rides"): Promise<void> {

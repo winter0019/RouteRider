@@ -5,7 +5,7 @@ import { ICONS, ROUTES, COLORS } from '../constants';
 
 interface PassengerHomeProps {
   trips: Trip[];
-  onBook: (trip: Trip) => void;
+  onBook: (trip: Trip, method: 'wallet' | 'paystack') => void;
 }
 
 const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
@@ -56,6 +56,8 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
     setAppliedFilters({ origin: '', dest: '', date: '' });
   };
 
+  const [paymentMethod, setPaymentMethod] = useState<'wallet' | 'paystack'>('wallet');
+
   const confirmBooking = async (trip: Trip) => {
     if (trip.seats_available <= trip.seats_booked) return;
     
@@ -64,9 +66,11 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
     setBookingError(null);
     
     try {
-      await onBook(trip);
-      setBookedTripIds(prev => new Set(prev).add(trip.trip_id));
-      setConfirmedTrip(trip);
+      await onBook(trip, paymentMethod);
+      if (paymentMethod === 'wallet') {
+        setBookedTripIds(prev => new Set(prev).add(trip.trip_id));
+        setConfirmedTrip(trip);
+      }
     } catch (error: any) {
       console.error('Booking error:', error);
       if (error.code === 'permission-denied') {
@@ -269,6 +273,26 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
                         {ICONS.Star} 4.9 • Verified
                       </div>
                    </div>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest px-1">Payment Method</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button 
+                      onClick={() => setPaymentMethod('wallet')}
+                      className={`p-4 rounded-3xl border-2 transition-all flex flex-col items-center gap-2 ${paymentMethod === 'wallet' ? 'border-emerald-500 bg-emerald-50' : 'border-slate-100 bg-white'}`}
+                    >
+                      <div className={paymentMethod === 'wallet' ? 'text-emerald-600' : 'text-slate-400'}>{ICONS.Wallet}</div>
+                      <span className="text-[10px] font-black uppercase">Wallet</span>
+                    </button>
+                    <button 
+                      onClick={() => setPaymentMethod('paystack')}
+                      className={`p-4 rounded-3xl border-2 transition-all flex flex-col items-center gap-2 ${paymentMethod === 'paystack' ? 'border-emerald-500 bg-emerald-50' : 'border-slate-100 bg-white'}`}
+                    >
+                      <div className={paymentMethod === 'paystack' ? 'text-emerald-600' : 'text-slate-400'}>{ICONS.Check}</div>
+                      <span className="text-[10px] font-black uppercase">Paystack</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">

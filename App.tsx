@@ -320,10 +320,22 @@ const App: React.FC = () => {
   // -------------------------
   // Passenger: Book Trip
   // -------------------------
-  const handleBookTrip = async (trip: Trip) => {
+  const handleBookTrip = async (trip: Trip, method: 'wallet' | 'paystack') => {
     try {
-      // Use the secure wallet-based booking
-      await api.bookTripWithWallet(trip.trip_id);
+      if (method === 'wallet') {
+        // Use the secure wallet-based booking
+        await api.bookTripWithWallet(trip.trip_id);
+      } else {
+        // Paystack flow
+        const res = await api.initPaystackBooking({
+          rideId: trip.trip_id,
+          email: profile?.email || `${profile?.user_id}@routerider.com`
+        });
+        if (res.authorization_url) {
+          window.location.href = res.authorization_url;
+          return; // Redirecting
+        }
+      }
 
       // refresh everything
       await Promise.all([

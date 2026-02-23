@@ -23,22 +23,23 @@ const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bo
     const params = new URLSearchParams(window.location.search);
     const reference = params.get('reference');
     if (reference) {
-      const verify = async () => {
+      // With webhooks, we just need to refresh the wallet balance
+      // The backend handles the verification
+      const refresh = async () => {
         setIsProcessing(true);
         try {
-          await api.verifyPaystackTopup(reference);
           // Clean URL
           window.history.replaceState({}, document.title, window.location.pathname);
-          // Trigger refresh via parent if needed, or just alert
-          alert("Payment verified successfully!");
-          if (onTransaction) await onTransaction({ type: 'deposit', amount: 0, description: 'Refresh' }); // hack to refresh
+          // Trigger refresh via parent
+          if (onTransaction) await onTransaction({ type: 'deposit', amount: 0, description: 'Refresh' });
+          alert("Payment processed! Your balance will update shortly.");
         } catch (err) {
-          console.error("Verification failed", err);
+          console.error("Refresh failed", err);
         } finally {
           setIsProcessing(false);
         }
       };
-      verify();
+      refresh();
     }
   }, []);
   
