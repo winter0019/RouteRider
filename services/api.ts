@@ -48,6 +48,14 @@ async function safeJson(res: Response) {
   }
 }
 
+/** Ensure arrays so UI never crashes on .map */
+const ensureArray = <T = any>(v: any): T[] => (Array.isArray(v) ? v : []);
+/** Ensure numbers */
+const num = (v: any, fallback = 0) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+};
+
 async function authedFetch(path: string, options: RequestInit = {}) {
   const user = await requireAuth();
 
@@ -79,14 +87,6 @@ async function authedFetch(path: string, options: RequestInit = {}) {
 
   return safeJson(res);
 }
-
-/** Ensure arrays so UI never crashes on .map */
-const ensureArray = <T = any>(v: any): T[] => (Array.isArray(v) ? v : []);
-/** Ensure numbers */
-const num = (v: any, fallback = 0) => {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
-};
 
 /** Safe helper */
 const toISO = (v: any) => {
@@ -210,7 +210,9 @@ export const api = {
     }
     const data = await res.json();
     const arr = ensureArray<any>(data);
-    return arr.map((d: any) => (d.source === "trips" ? mapTripDocToTrip(d.id, d) : mapRideDocToTrip(d.id, d)));
+    return arr.map((d: any) =>
+      d.source === "trips" ? mapTripDocToTrip(d.id, d) : mapRideDocToTrip(d.id, d)
+    );
   },
 
   async getTrip(tripId: string, source: "rides" | "trips" = "rides"): Promise<Trip | null> {
@@ -247,11 +249,16 @@ export const api = {
   },
 
   async getMyWallet() {
-    // ✅ ensure wallet shape (prevents UI crash)
-    const data: any = await authedFetch("/wallet");
+    // ✅ always return stable wallet shape (prevents blank wallet + UI crashes)
+    const data: any = await authedFetch("/wallet", { method: "GET" });
+
+    // backend may send extra fields; we normalize for UI safety
     return {
+      uid: data?.uid,
       balance: num(data?.balance, 0),
       balanceKobo: num(data?.balanceKobo, 0),
+      wallet_balance: num(data?.wallet_balance, num(data?.balance, 0)), // backward compatible
+      updatedAt: data?.updatedAt || null,
     };
   },
 
@@ -283,14 +290,14 @@ export const api = {
   },
 
   async bookTrip(tripId: string, _source: "rides" | "trips" = "rides"): Promise<void> {
-    return authedFetch(`/rides/${tripId}/book`, { method: "POST" }) as any;
+    await authedFetch(`/rides/${tripId}/book`, { method: "POST" });
   },
 
   async cancelBooking(tripId: string, source: "rides" | "trips" = "rides"): Promise<void> {
-    return authedFetch(`/rides/${tripId}/cancel`, {
+    await authedFetch(`/rides/${tripId}/cancel`, {
       method: "POST",
       body: JSON.stringify({ source }),
-    }) as any;
+    });
   },
 
   async updateBookingStatus(bookingId: string, status: string) {
@@ -326,7 +333,7 @@ export const api = {
     return ensureArray<any>(data).map((x: any) => mapBooking(x));
   },
 
-  // Driver view (if you add it)
+  // Driver view (only works if backend has GET /api/bookings/driver)
   async getBookingsForDriver(): Promise<Booking[]> {
     const data: any = await authedFetch(`/bookings/driver`, { method: "GET" });
     return ensureArray<any>(data).map((x: any) => mapBooking(x));
@@ -359,7 +366,7 @@ export const api = {
   },
 
   // ----------------------------
-  // Driver withdrawal (you will add backend next)
+  // Driver withdrawal (backend must exist)
   // ----------------------------
   async withdrawToBank(params: { amountNaira: number }) {
     const amountKobo = Math.round(params.amountNaira * 100);
