@@ -1238,3 +1238,22 @@ app.post("/api/trips/:tripId/complete", requireFirebaseAuth, async (req: any, re
     return res.status(400).json({ error: err.message || "Failed to complete trip" });
   }
 });
+
+  // ------------------------------------------------------
+  // Vite middleware / Production static
+  // ------------------------------------------------------
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    app.use(express.static(path.join(__dirname, "dist")));
+    app.get(/.*/, (_req, res) => res.sendFile(path.join(__dirname, "dist", "index.html")));
+  }
+
+  app.listen(PORT, "0.0.0.0", () => console.log(`Server running on http://localhost:${PORT}`));
+} // ✅ closes startServer()
+
+startServer(); // ✅ call
