@@ -616,14 +616,39 @@ async function startServer() {
   // Wallet
   // ------------------------------------------------------
   app.get("/api/wallet", requireFirebaseAuth, async (req: any, res) => {
-    try {
-      const snap = await db.collection(WALLETS_COL).doc(req.uid).get();
-      if (!snap.exists) return res.json({ balance: 0, balanceKobo: 0 });
-      res.json(snap.data());
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
+  try {
+    const uid = req.uid;
+
+    const walletSnap = await db.collection(WALLETS_COL).doc(uid).get();
+    const userSnap = await db.collection(USERS_COL).doc(uid).get();
+
+    const walletData: any = walletSnap.exists ? walletSnap.data() : {};
+    const userData: any = userSnap.exists ? userSnap.data() : {};
+
+    // Prefer wallet.balanceKobo, fallback to wallet.balance, fallback to users.wallet_balance
+    const balanceKobo =
+      typeof walletData.balanceKobo === "number"
+        ? walletData.balanceKobo
+        : typeof walletData.balance === "number"
+        ? Math.round(walletData.balance * 100)
+        : typeof userData.wallet_balance === "number"
+        ? Math.round(userData.wallet_balance * 100)
+        : 0;
+
+    const balance =
+      typeof walletData.balance === "number" ? walletData.balance : balanceKobo / 100;
+
+    return res.json({
+      uid,
+      balance,                 // ✅ always present
+      balanceKobo,             // ✅ always present
+      wallet_balance: balance, // ✅ backward compatible for old UI
+      updatedAt: walletData.updatedAt || userData.updatedAt || null,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
 
   // Driver escrow summary (what driver is holding)
   app.get("/api/escrows/me", requireFirebaseAuth, async (req: any, res) => {
