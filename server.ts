@@ -15,6 +15,29 @@ process.on("uncaughtException", (err) => console.error("Uncaught Exception:", er
 process.on("unhandledRejection", (reason, promise) =>
   console.error("Unhandled Rejection at:", promise, "reason:", reason)
 );
+const COMMISSION_RATE = 0.1;
+
+function computeNetToDriverKobo(params: {
+  booking: any;
+  escrow: any;
+}) {
+  const booking = params.booking || {};
+  const escrow = params.escrow || {};
+
+  const amountKobo =
+    Number(booking.amountKobo || 0) ||
+    Number(escrow.amountKobo || 0);
+
+  // If netToDriverKobo already exists, use it
+  const existingNet = Number(booking.netToDriverKobo || 0);
+  if (existingNet > 0) return existingNet;
+
+  // Otherwise compute net from amountKobo
+  const commission = Math.round(amountKobo * COMMISSION_RATE);
+  const net = Math.max(0, amountKobo - commission);
+
+  return net;
+}
 
 // -----------------------------
 // Firebase Admin init
