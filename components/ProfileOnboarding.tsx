@@ -13,9 +13,10 @@ interface ProfileOnboardingProps {
 
 const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => {
   const [role, setRole] = useState<'driver' | 'passenger' | null>(null);
-  const [step, setStep] = useState(-1); // -1: Role, 0: Phone/OTP, 1: Info, 2: NIN, 3: Car
+  const [step, setStep] = useState(-2); // -2: Landing, -1: Role, 0: Auth, 1: Info, 2: NIN, 3: Car
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState<{ verified: boolean; message: string } | null>(null);
+  const [authMode, setAuthMode] = useState<'signup' | 'login'>('signup');
   
   const [formData, setFormData] = useState({
     full_name: '',
@@ -31,12 +32,13 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
 
   const handleRoleSelect = (selectedRole: 'driver' | 'passenger') => {
     setRole(selectedRole);
-    // If already authenticated, skip step 0 (AuthVerification)
-    if (auth?.currentUser) {
-      setStep(1);
-    } else {
-      setStep(0);
-    }
+    setAuthMode('signup');
+    setStep(0);
+  };
+
+  const handleLoginStart = () => {
+    setAuthMode('login');
+    setStep(0);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -107,12 +109,46 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
       )}
 
       <div className="flex-1 p-8 space-y-8 overflow-y-auto">
+        {step === -2 && (
+          <div className="space-y-12 animate-in fade-in duration-700 flex flex-col items-center justify-center min-h-[80vh]">
+            <header className="text-center space-y-6">
+               <div className="mx-auto w-24 h-24 bg-emerald-600 text-white rounded-[2.5rem] flex items-center justify-center font-black text-5xl shadow-2xl shadow-emerald-200 border-4 border-white">R</div>
+               <div className="space-y-2">
+                 <h1 className="text-4xl font-black tracking-tighter text-slate-900">RouteRider</h1>
+                 <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Daura ↔ Katsina Carpooling</p>
+               </div>
+               <p className="text-slate-600 font-bold text-lg px-4 leading-relaxed">
+                 The safest and most affordable way to travel between Daura and Katsina.
+               </p>
+            </header>
+            
+            <div className="w-full space-y-4">
+              <button 
+                onClick={() => setStep(-1)}
+                className="w-full bg-emerald-600 text-white p-6 rounded-3xl font-black text-xl shadow-xl shadow-emerald-200 active:scale-[0.98] transition-all"
+              >
+                Get Started
+              </button>
+
+              <button 
+                onClick={handleLoginStart}
+                className="w-full bg-white border-2 border-slate-100 text-slate-900 p-6 rounded-3xl font-black text-xl hover:bg-slate-50 active:scale-[0.98] transition-all"
+              >
+                Sign In
+              </button>
+            </div>
+
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest text-center">
+              By continuing, you agree to our Terms of Service
+            </p>
+          </div>
+        )}
+
         {step === -1 && (
           <div className="space-y-8 animate-in slide-in-from-bottom-4 flex flex-col items-center justify-center min-h-[70vh]">
             <header className="text-center space-y-4">
-               <div className="mx-auto w-20 h-20 bg-emerald-100 text-emerald-600 rounded-3xl flex items-center justify-center font-black text-4xl shadow-lg border-2 border-emerald-50">R</div>
-               <h2 className="text-3xl font-black tracking-tight">Welcome to RouteRider</h2>
-               <p className="text-gray-500 font-bold px-4">The easiest way to commute between Daura and Katsina.</p>
+               <h2 className="text-3xl font-black tracking-tight">Choose Your Role</h2>
+               <p className="text-gray-500 font-bold px-4">Are you offering a ride or looking for one?</p>
             </header>
             
             <div className="w-full space-y-4">
@@ -143,6 +179,7 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
 
         {step === 0 && (
           <AuthVerification 
+            initialMode={authMode}
             onVerified={async (identifier) => {
               if (identifier.includes('@')) {
                 setFormData(prev => ({ ...prev, email: identifier }));
@@ -183,7 +220,7 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
               
               setStep(1);
             }} 
-            onBack={() => setStep(-1)}
+            onBack={() => setStep(authMode === 'login' ? -2 : -1)}
           />
         )}
 

@@ -26,7 +26,11 @@ const BOOKINGS_COL = "bookings";
 const TRANSACTIONS_COL = "transactions";
 const WALLETS_COL = "wallets";
 
-const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || "";
+const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || (typeof window !== 'undefined' ? window.location.origin : "");
+
+if (typeof window !== 'undefined') {
+  console.log("API_BASE:", API_BASE);
+}
 
 function requireAuth() {
   if (!auth?.currentUser) throw new Error("Not authenticated");
@@ -151,14 +155,14 @@ export const api = {
   // TRIPS
   // ----------------------------
   async getTrips(): Promise<Trip[]> {
-    const res = await fetch(`${API_BASE}/rides`);
+    const res = await fetch(`${API_BASE}/api/rides`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Failed to fetch rides");
     return data.map((d: any) => d.source === "trips" ? mapTripDocToTrip(d.id, d) : mapRideDocToTrip(d.id, d));
   },
 
   async getTrip(tripId: string, source: "rides" | "trips" = "rides"): Promise<Trip | null> {
-    const res = await fetch(`${API_BASE}/rides/${tripId}?source=${source}`);
+    const res = await fetch(`${API_BASE}/api/rides/${tripId}?source=${source}`);
     const data = await res.json();
     if (!res.ok) return null;
     return source === "trips" ? mapTripDocToTrip(data.id, data) : mapRideDocToTrip(data.id, data);

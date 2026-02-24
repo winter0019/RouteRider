@@ -14,11 +14,12 @@ import { ICONS } from '../constants';
 interface AuthVerificationProps {
   onVerified: (identifier: string) => void;
   onBack?: () => void;
+  initialMode?: 'signup' | 'login';
 }
 
-const AuthVerification: React.FC<AuthVerificationProps> = ({ onVerified, onBack }) => {
+const AuthVerification: React.FC<AuthVerificationProps> = ({ onVerified, onBack, initialMode = 'signup' }) => {
   const [authMethod, setAuthMethod] = useState<'email' | 'phone'>('email');
-  const [mode, setMode] = useState<'signup' | 'login'>('signup');
+  const [mode, setMode] = useState<'signup' | 'login'>(initialMode);
   
   // Email States
   const [email, setEmail] = useState('');

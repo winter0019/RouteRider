@@ -40,14 +40,8 @@ try {
   console.error("Firebase Admin initialization error:", error);
 }
 
-const db = admin.firestore();
+let db: admin.firestore.Firestore;
 const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY || "sk_test_placeholder";
-
-if (PAYSTACK_SECRET === "sk_test_placeholder") {
-  console.warn("WARNING: PAYSTACK_SECRET_KEY is not set, using placeholder.");
-} else {
-  console.log(`PAYSTACK_SECRET_KEY is set (starts with ${PAYSTACK_SECRET.slice(0, 7)}...)`);
-}
 
 const WALLETS_COL = "wallets";
 const TX_COL = "transactions";
@@ -58,11 +52,29 @@ async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3000;
 
+  try {
+    db = admin.firestore();
+  } catch (err) {
+    console.error("Failed to get Firestore instance:", err);
+  }
+
   console.log(`[${new Date().toISOString()}] Starting server...`);
   console.log(`[${new Date().toISOString()}] Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`[${new Date().toISOString()}] Port: ${PORT}`);
 
   app.use(cors());
+
+  // Middleware to check if Firebase is initialized
+  app.use((req, res, next) => {
+    if (!db && req.url.startsWith("/api") && req.url !== "/api/health") {
+      return res.status(503).json({ error: "Firebase not initialized. Check server logs." });
+    }
+    next();
+  });
+
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", time: new Date().toISOString() });
+  });
 
   // --------- Paystack Webhook (Needs Raw Body) ---------
   app.post("/api/paystack/webhook", express.raw({ type: "application/json" }), async (req: any, res) => {
