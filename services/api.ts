@@ -385,3 +385,16 @@ export const api = {
     return ensureArray<any>(data);
   },
 };
+
+async verifyPaystack(reference: string) {
+  return authedFetch("/paystack/verify", {
+    method: "POST",
+    body: JSON.stringify({ reference }),
+  });
+},
+
+async completeTrip(tripId: string) {
+  return authedFetch(`/trips/${tripId}/complete`, {
+    method: "POST",
+  });
+},
