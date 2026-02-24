@@ -230,11 +230,11 @@ async function startServer() {
           );
 
           // 2) Mark booking escrowed/paid
-          tx.update(bookingRef, {
-            status: "escrowed",
-            paidAt: admin.firestore.FieldValue.serverTimestamp(),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
+         tx.update(bookingRef, {
+           status: "confirmed", // ✅ paid = confirmed immediately
+           paidAt: admin.firestore.FieldValue.serverTimestamp(),
+           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+         });
 
           // 3) IMPORTANT: update ride seats + bookedBy so driver card updates
           if (tripId) {
