@@ -42,6 +42,20 @@ const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bo
       refresh();
     }
   }, []);
+
+  useEffect(() => {
+  const ref = new URLSearchParams(window.location.search).get("reference");
+  if (!ref) return;
+
+  (async () => {
+    try {
+      await api.verifyPaystack(ref);
+      // refresh wallet + trips + bookings if needed
+    } catch (e) {
+      console.error(e);
+    }
+  })();
+}, []);
   
   // For passengers, "transactions" might be empty in demo, so we show their "My Rides"
   const myRides = bookings.filter(b => b.passenger_id === profile.user_id || b.passenger_name === profile.full_name);
