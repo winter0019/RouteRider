@@ -193,6 +193,55 @@ async function startServer() {
     }
   }
 
+  function requireAdmin(req: any, res: any, next: any) {
+    if (!req.user?.admin) {
+      console.warn(`[${new Date().toISOString()}] Admin Access Denied: UID ${req.uid}`);
+      return res.status(403).json({ error: "Admin only" });
+    }
+    next();
+  }
+
+  // --------- Admin APIs ---------
+  // Admin: list KYC submissions
+  app.get("/api/admin/kyc", requireFirebaseAuth, requireAdmin, async (req, res) => {
+    try {
+      const snap = await db.collection("kyc_submissions")
+        .orderBy("createdAt", "desc")
+        .limit(100)
+        .get();
+
+      res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Admin: approve/reject KYC
+  app.post("/api/admin/kyc/:uid/decision", requireFirebaseAuth, requireAdmin, async (req, res) => {
+    const { uid } = req.params;
+    const { status } = req.body; // "approved" | "rejected"
+
+    if (!["approved", "rejected"].includes(status)) {
+      return res.status(400).json({ error: "Invalid status" });
+    }
+
+    try {
+      await db.collection("kyc_submissions").doc(uid).set({
+        status,
+        reviewedBy: req.uid,
+        reviewedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+
+      await db.collection("users").doc(uid).set({
+        kycStatus: status
+      }, { merge: true });
+
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // --------- Rides ---------
   app.get("/api/rides", async (req, res) => {
     try {
