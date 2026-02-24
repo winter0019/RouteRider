@@ -52,6 +52,23 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
       const result = await verifyDocument(base64String, 'nin', formData.full_name);
       setVerificationResult(result);
       setIsVerifying(false);
+
+      if (result.verified) {
+        try {
+          await firestoreService.submitKYC({
+            role: role as any,
+            documentType: 'nin',
+            idImagePath: base64String, // In a real app, this would be a Storage path
+            selfiePath: '', // Placeholder for now
+            extractedName: formData.full_name,
+            aiDecision: result.verified ? 'pass' : 'fail',
+            aiScore: result.confidence || 0,
+            aiNotes: result.message
+          });
+        } catch (err) {
+          console.error("Error submitting KYC:", err);
+        }
+      }
     };
     reader.readAsDataURL(file);
   };

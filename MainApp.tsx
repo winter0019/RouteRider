@@ -19,6 +19,7 @@ import PassengerHome from "./components/PassengerHome";
 import { api } from "./services/api";
 import { firestoreService } from "./services/firestoreService";
 import { auth, isFirebaseConfigured } from "./services/firebase";
+import { sendEmailVerification } from "firebase/auth";
 
 type Page = "dashboard" | "post-trip" | "bookings" | "wallet" | "settings" | "search";
 type UserRole = "driver" | "passenger";
@@ -498,6 +499,25 @@ const MainApp: React.FC = () => {
       {globalError && (
         <div className="bg-red-600 text-white p-3 text-[10px] text-center font-black uppercase tracking-tight animate-pulse">
           ⚠️ {globalError}
+        </div>
+      )}
+      {isLoggedIn && auth?.currentUser && !auth.currentUser.emailVerified && (
+        <div className="bg-amber-500 text-white p-3 text-[10px] flex items-center justify-between font-black uppercase tracking-tight">
+          <span>⚠️ Verify your email to unlock all features</span>
+          <button 
+            onClick={async () => {
+              try {
+                await sendEmailVerification(auth.currentUser!);
+                alert("Verification email sent!");
+              } catch (err) {
+                console.error(err);
+                alert("Failed to send verification email.");
+              }
+            }}
+            className="bg-white text-amber-600 px-2 py-1 rounded-md text-[8px]"
+          >
+            Resend
+          </button>
         </div>
       )}
       <header className="px-4 py-4 flex items-center justify-between border-b sticky top-0 bg-white z-10">

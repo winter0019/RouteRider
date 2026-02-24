@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { Navigate } from "react-router-dom";
 import { auth } from "./services/firebase";
 
 export default function AdminGuard({ children }: { children: React.ReactNode }) {
@@ -29,9 +28,13 @@ export default function AdminGuard({ children }: { children: React.ReactNode }) 
     checkAdmin();
   }, []);
 
-  if (loading) return <div className="p-6 font-black">Loading...</div>;
-  if (!auth?.currentUser) return <Navigate to="/" replace />;
-  if (!isAdmin) return <Navigate to="/" replace />;
+  if (loading) return <div className="p-6 font-black text-black">Loading...</div>;
+  
+  if (!auth?.currentUser || !isAdmin) {
+    // Simple redirect
+    window.location.href = "/";
+    return null;
+  }
 
   return <>{children}</>;
 }
