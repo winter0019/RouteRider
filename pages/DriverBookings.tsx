@@ -17,10 +17,10 @@ function bucketBooking(b: any): Bucket {
 
   if (s === "completed") return "completed";
 
-  // ✅ Paid statuses (show as confirmed)
-  if (["confirmed", "escrowed", "accepted"].includes(s)) return "confirmed";
+  // ✅ Paid = Confirmed immediately
+  if (["escrowed", "accepted", "confirmed"].includes(s)) return "confirmed";
 
-  // pending includes pending_payment
+  // pending includes "pending_payment"
   return "pending";
 }
 
@@ -28,6 +28,7 @@ export default function DriverBookings() {
   const [uid, setUid] = useState<string | null>(null);
 
   const [trips, setTrips] = useState<Trip[]>([]);
+  // ✅ activeTripId MUST be Firestore doc id
   const [activeTripId, setActiveTripId] = useState<string | null>(null);
 
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -46,17 +47,20 @@ export default function DriverBookings() {
     try {
       setError(null);
       const all = await api.getTrips();
-
       const mine = (all || []).filter((t) => t.driver_id === uid || t.carOwnerId === uid);
 
       // newest first
       mine.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
       setTrips(mine);
 
-      // set a safe active trip (must be an existing trip_id)
+      // ✅ set a safe active trip (MUST be doc id)
       if (!activeTripId && mine.length > 0) {
-        setActiveTripId(mine[0].trip_id || mine[0].id);
+        setActiveTripId(mine[0].id);
+      }
+
+      // ✅ if current activeTripId is not in the list anymore, fallback
+      if (activeTripId && mine.length > 0 && !mine.some((t) => t.id === activeTripId)) {
+        setActiveTripId(mine[0].id);
       }
     } catch (e: any) {
       setError(e.message || "Failed to load trips");
@@ -64,20 +68,16 @@ export default function DriverBookings() {
   };
 
   // 3) Load bookings for active trip
-  const loadBookings = async (tripId: string) => {
+  const loadBookings = async (tripDocId: string) => {
     try {
       setError(null);
 
-      // backend will return either:
-      // - all bookings (if driver owns trip)
-      // - only passenger bookings (if not owner)
-      const list = await api.getBookingsForTrip(tripId);
-
+      // ✅ tripDocId is Firestore doc id
+      const list = await api.getBookingsForTrip(tripDocId);
       const arr = Array.isArray(list) ? list : [];
 
       // newest first
       arr.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
       setBookings(arr);
     } catch (e: any) {
       setError(e.message || "Failed to load bookings");
@@ -126,7 +126,7 @@ export default function DriverBookings() {
     if (!activeTripId) return;
     setBusy(true);
     try {
-      // you already have this endpoint on backend: POST /api/trips/:tripId/complete
+      console.log("Completing trip doc id:", activeTripId);
       await api.completeTrip(activeTripId);
       await loadBookings(activeTripId);
       await loadTrips();
@@ -193,14 +193,12 @@ export default function DriverBookings() {
           onChange={(e) => setActiveTripId(e.target.value)}
           className="w-full border-2 border-slate-100 rounded-2xl px-4 py-3 font-bold"
         >
-          {trips.map((t) => {
-            const tripKey = t.trip_id || t.id;
-            return (
-              <option key={tripKey} value={tripKey}>
-                {t.route} • {t.departure_time || t.time || "Time"} • seats {t.seats_booked}/{t.seats_available}
-              </option>
-            );
-          })}
+          {trips.map((t) => (
+            // ✅ key + value MUST be doc id
+            <option key={t.id} value={t.id}>
+              {t.route} • {t.departure_time || t.time || "Time"} • seats {t.seats_booked}/{t.seats_available}
+            </option>
+          ))}
         </select>
       </section>
 
@@ -214,7 +212,7 @@ export default function DriverBookings() {
         <div className="p-4 bg-emerald-50 rounded-3xl border-2 border-emerald-100">
           <p className="text-[10px] font-black uppercase text-emerald-500 tracking-widest mb-1">Confirmed</p>
           <p className="text-2xl font-black text-emerald-900">{confirmedCount}</p>
-          <p className="text-[10px] font-bold text-emerald-700">Includes ESCROWED / ACCEPTED</p>
+          <p className="text-[10px] font-bold text-emerald-700">Paid = Confirmed (ESCROWED)</p>
         </div>
         <div className="p-4 bg-slate-50 rounded-3xl border-2 border-slate-100">
           <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Completed</p>
