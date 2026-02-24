@@ -274,6 +274,165 @@ async function startServer() {
   // JSON body parser (after webhook)
   app.use(express.json({ limit: "10mb" }));
 
+  // ------------------------------------------------------
+// Paystack VERIFY (fallback when webhook fails)
+// ------------------------------------------------------
+app.post("/api/paystack/verify", requireFirebaseAuth, async (req: any, res) => {
+  const { reference } = req.body || {};
+  if (!reference) return res.status(400).json({ error: "reference required" });
+
+  try {
+    // 1) Verify from Paystack
+    const vr = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` },
+    });
+
+    const vdata: any = await vr.json();
+    if (!vdata?.status) return res.status(400).json({ error: "Paystack verify failed", detail: vdata });
+    if (vdata?.data?.status !== "success") return res.status(400).json({ error: "Transaction not successful yet" });
+
+    // 2) Find payment intent
+    const intentSnap = await db
+      .collection(PAYMENT_INTENTS_COL)
+      .where("reference", "==", reference)
+      .limit(1)
+      .get();
+
+    if (intentSnap.empty) return res.status(404).json({ error: "Payment intent not found" });
+
+    const intentDoc = intentSnap.docs[0];
+    const intent: any = intentDoc.data();
+
+    // already processed
+    if (intent.status === "success") return res.json({ ok: true, alreadyProcessed: true });
+
+    // 3) Apply the same logic as webhook
+    await db.runTransaction(async (tx) => {
+      tx.update(intentDoc.ref, {
+        status: "success",
+        paidAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // -----------------
+      // TOPUP
+      // -----------------
+      if (intent.type === "topup") {
+        const userRef = db.collection(USERS_COL).doc(intent.userId);
+        const walletRef = db.collection(WALLETS_COL).doc(intent.userId);
+
+        tx.set(
+          userRef,
+          {
+            wallet_balance: admin.firestore.FieldValue.increment(intent.amountKobo / 100),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        tx.set(
+          walletRef,
+          {
+            uid: intent.userId,
+            balanceKobo: admin.firestore.FieldValue.increment(intent.amountKobo),
+            balance: admin.firestore.FieldValue.increment(intent.amountKobo / 100),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        tx.set(db.collection(TX_COL).doc(reference), {
+          user_id: intent.userId,
+          uid: intent.userId,
+          type: "topup",
+          amount: intent.amountKobo / 100,
+          amountKobo: intent.amountKobo,
+          status: "success",
+          reference,
+          description: "Wallet Topup (Paystack)",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+
+      // -----------------
+      // BOOKING => escrow + status escrowed + update seats
+      // -----------------
+      if (intent.type === "booking") {
+        const bookingRef = db.collection(BOOKINGS_COL).doc(intent.bookingId);
+        const bookingSnap = await tx.get(bookingRef);
+        if (!bookingSnap.exists) throw new Error("Booking not found");
+
+        const booking: any = bookingSnap.data();
+        const tripId = booking.trip_id || booking.rideId;
+        const driverId = booking.driver_id || booking.driverId;
+        const passengerId = booking.passenger_id || booking.passengerId;
+
+        // Create escrow (doc id = bookingId)
+        const escrowRef = db.collection(ESCROWS_COL).doc(intent.bookingId);
+        tx.set(
+          escrowRef,
+          {
+            bookingId: intent.bookingId,
+            trip_id: tripId,
+            driver_id: driverId,
+            passenger_id: passengerId,
+            amountKobo: intent.amountKobo,
+            status: "held",
+            source: "paystack",
+            reference,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        // ✅ VERY IMPORTANT: mark paid & escrowed
+        tx.update(bookingRef, {
+          status: "escrowed",
+          payment_status: "paid",
+          paid: true,
+          paystack_reference: reference,
+          paidAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // ✅ Update ride seats + bookedBy
+        if (tripId) {
+          const rideRef = db.collection(RIDES_COL).doc(tripId);
+          const rideSnap = await tx.get(rideRef);
+          if (rideSnap.exists) {
+            tx.update(rideRef, {
+              bookedBy: admin.firestore.FieldValue.arrayUnion(passengerId),
+              seats_booked: admin.firestore.FieldValue.increment(1),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+          }
+        }
+
+        // log passenger “escrow hold”
+        tx.set(db.collection(TX_COL).doc(`escrow_hold_${intent.bookingId}`), {
+          user_id: passengerId,
+          uid: passengerId,
+          type: "escrow_hold",
+          amount: -(intent.amountKobo / 100),
+          amountKobo: -intent.amountKobo,
+          status: "success",
+          reference,
+          bookingId: intent.bookingId,
+          trip_id: tripId,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+    });
+
+    return res.json({ ok: true });
+  } catch (err: any) {
+    console.error("Verify Error:", err);
+    return res.status(500).json({ error: err.message || "Verify failed" });
+  }
+});
+
+  
   // Request logging
   app.use((req, _res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
