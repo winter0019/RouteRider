@@ -380,11 +380,9 @@ export const api = {
   // Transactions
   // ----------------------------
   async getTransactions(_userId?: string) {
-    const data: any = await authedFetch("/transactions", { method: "GET" });
-    // ✅ critical: always array so UI .map never crashes
-    return ensureArray<any>(data);
-  },
-};
+  const data: any = await authedFetch("/transactions", { method: "GET" });
+  return ensureArray<any>(data);
+}, // 👈 THIS COMMA WAS MISSING
 
 async verifyPaystack(reference: string) {
   return authedFetch("/paystack/verify", {
