@@ -376,23 +376,30 @@ export const api = {
     });
   },
 
-  // ----------------------------
+  //// ----------------------------
   // Transactions
   // ----------------------------
   async getTransactions(_userId?: string) {
-  const data: any = await authedFetch("/transactions", { method: "GET" });
-  return ensureArray<any>(data);
-}, // 👈 THIS COMMA WAS MISSING
+    const data: any = await authedFetch("/transactions", { method: "GET" });
+    return ensureArray<any>(data);
+  },
 
-async verifyPaystack(reference: string) {
-  return authedFetch("/paystack/verify", {
-    method: "POST",
-    body: JSON.stringify({ reference }),
-  });
-},
+  // ----------------------------
+  // Paystack verification (after redirect)
+  // ----------------------------
+  async verifyPaystack(reference: string) {
+    return authedFetch("/paystack/verify", {
+      method: "POST",
+      body: JSON.stringify({ reference }),
+    });
+  },
 
-async completeTrip(tripId: string) {
-  return authedFetch(`/trips/${tripId}/complete`, {
-    method: "POST",
-  });
-},
+  // ----------------------------
+  // Driver: complete trip (release escrow)
+  // ----------------------------
+  async completeTrip(tripId: string) {
+    return authedFetch(`/trips/${tripId}/complete`, {
+      method: "POST",
+    });
+  },
+};
