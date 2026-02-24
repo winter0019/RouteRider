@@ -18,41 +18,46 @@ const App: React.FC = () => {
   useEffect(() => {
     const sync = () => setPath(getPathname());
 
-    // 1) browser back/forward
+    // Back/forward
     window.addEventListener("popstate", sync);
 
-    // 2) patch pushState/replaceState so SPA navigation updates App
-    const originalPush = history.pushState;
-    const originalReplace = history.replaceState;
+    // Patch pushState/replaceState so SPA route changes are detected
+    const originalPushState = history.pushState;
+    const originalReplaceState = history.replaceState;
 
     history.pushState = function (...args) {
-      originalPush.apply(this, args as any);
+      originalPushState.apply(this, args as any);
       sync();
     } as any;
 
     history.replaceState = function (...args) {
-      originalReplace.apply(this, args as any);
+      originalReplaceState.apply(this, args as any);
       sync();
     } as any;
 
-    // 3) optional custom event (if you dispatch it)
+    // Optional custom navigation event
     const handleNavigate = (e: any) => {
       if (typeof e?.detail === "string") {
-        history.pushState({}, "", e.detail);
-        sync();
-      } else {
-        sync();
+        // Only push if it actually changes the path (prevents loops)
+        if (window.location.pathname !== e.detail) {
+          history.pushState({}, "", e.detail);
+        }
       }
+      sync();
     };
+
     window.addEventListener("navigate", handleNavigate as any);
+
+    // Initial sync (in case pathname changed before mount)
+    sync();
 
     return () => {
       window.removeEventListener("popstate", sync);
       window.removeEventListener("navigate", handleNavigate as any);
 
-      // restore history methods
-      history.pushState = originalPush;
-      history.replaceState = originalReplace;
+      // Restore originals
+      history.pushState = originalPushState;
+      history.replaceState = originalReplaceState;
     };
   }, []);
 
