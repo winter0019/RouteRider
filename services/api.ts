@@ -1,8 +1,8 @@
 import { db, auth } from "./firebase";
 import { Trip, TripStatus, Booking } from "../types";
 
-const RIDES_COL = "rides";     // legacy/current
-const TRIPS_COL = "trips";     // optional new
+const RIDES_COL = "rides"; // legacy/current
+const TRIPS_COL = "trips"; // optional new
 const BOOKINGS_COL = "bookings";
 const TRANSACTIONS_COL = "transactions";
 const WALLETS_COL = "wallets";
@@ -37,6 +37,17 @@ async function requireAuth() {
   return auth.currentUser;
 }
 
+/** Parse response safely */
+async function safeJson(res: Response) {
+  const txt = await res.text().catch(() => "");
+  if (!txt) return null;
+  try {
+    return JSON.parse(txt);
+  } catch {
+    return txt;
+  }
+}
+
 async function authedFetch(path: string, options: RequestInit = {}) {
   const user = await requireAuth();
 
@@ -58,26 +69,24 @@ async function authedFetch(path: string, options: RequestInit = {}) {
   });
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    let errorMsg = text || `Request failed: ${res.status}`;
-    try {
-      const json = JSON.parse(text);
-      errorMsg = json.error || json.message || errorMsg;
-    } catch {
-      // not json
-    }
+    const data = await safeJson(res);
+    const errorMsg =
+      (typeof data === "object" && data && (data.error || data.message)) ||
+      (typeof data === "string" && data) ||
+      `Request failed: ${res.status}`;
     throw new Error(errorMsg);
   }
 
-  // Some endpoints may return empty body
-  const txt = await res.text().catch(() => "");
-  if (!txt) return null;
-  try {
-    return JSON.parse(txt);
-  } catch {
-    return txt;
-  }
+  return safeJson(res);
 }
+
+/** Ensure arrays so UI never crashes on .map */
+const ensureArray = <T = any>(v: any): T[] => (Array.isArray(v) ? v : []);
+/** Ensure numbers */
+const num = (v: any, fallback = 0) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+};
 
 /** Safe helper */
 const toISO = (v: any) => {
@@ -93,9 +102,8 @@ const toISO = (v: any) => {
 
 const mapRideDocToTrip = (id: string, data: any): Trip => {
   const bookedBy: string[] = Array.isArray(data.bookedBy) ? data.bookedBy : [];
-  const seatsAvailable = Number(data.seats_available ?? 0);
-  const seatsBooked =
-    typeof data.seats_booked === "number" ? data.seats_booked : bookedBy.length;
+  const seatsAvailable = num(data.seats_available, 0);
+  const seatsBooked = typeof data.seats_booked === "number" ? data.seats_booked : bookedBy.length;
 
   const origin = String(data.origin || "");
   const destination = String(data.destination || "");
@@ -105,8 +113,9 @@ const mapRideDocToTrip = (id: string, data: any): Trip => {
     trip_id: id,
     source: "rides",
 
-    driver_id: data.carOwnerId,
-    carOwnerId: data.carOwnerId,
+    // 🔧 important: some docs use driver_id not only carOwnerId
+    driver_id: data.carOwnerId || data.driver_id,
+    carOwnerId: data.carOwnerId || data.driver_id,
 
     origin,
     destination,
@@ -118,16 +127,16 @@ const mapRideDocToTrip = (id: string, data: any): Trip => {
     seats_available: seatsAvailable,
     seats_booked: seatsBooked,
 
-    price_per_seat: Number(data.price_per_seat ?? 0),
+    price_per_seat: num(data.price_per_seat, 0),
     driver_name: String(data.driver_name || "Verified Owner"),
     car_details: String(data.car_details || data.vehicle_name || "Vehicle"),
     vehicle_name: String(data.vehicle_name || data.car_details || "Vehicle"),
 
     status: (data.status as TripStatus) || TripStatus.POSTED,
-    earnings: Number(data.earnings ?? 0),
+    earnings: num(data.earnings, 0),
     bookedBy,
 
-    created_at: toISO(data.createdAt),
+    created_at: toISO(data.createdAt || data.created_at),
   };
 };
 
@@ -152,16 +161,16 @@ const mapTripDocToTrip = (id: string, data: any): Trip => {
     departure_time: data.departure_time || data.time,
     time: data.departure_time || data.time,
 
-    seats_available: Number(data.seats_available ?? 0),
-    seats_booked: Number(data.seats_booked ?? bookedBy.length),
+    seats_available: num(data.seats_available, 0),
+    seats_booked: num(data.seats_booked, bookedBy.length),
 
-    price_per_seat: Number(data.price_per_seat ?? 0),
+    price_per_seat: num(data.price_per_seat, 0),
     driver_name: String(data.driver_name || "Verified Owner"),
     car_details: String(data.car_details || data.vehicle_name || "Vehicle"),
     vehicle_name: String(data.vehicle_name || data.car_details || "Vehicle"),
 
     status: (data.status as TripStatus) || TripStatus.POSTED,
-    earnings: Number(data.earnings ?? 0),
+    earnings: num(data.earnings, 0),
     bookedBy,
 
     created_at: toISO(data.createdAt || data.created_at),
@@ -179,7 +188,7 @@ function mapBooking(data: any): Booking {
     passenger_rating: data.passenger_rating || 5.0,
     passenger_trips: data.passenger_trips || 0,
     seats_booked: data.seats_booked,
-    amount_paid: data.amount_paid ?? (data.amountKobo ? data.amountKobo / 100 : undefined),
+    amount_paid: data.amount_paid ?? (data.amountKobo ? num(data.amountKobo) / 100 : undefined),
     status: data.status,
     created_at: toISO(data.createdAt || data.created_at),
   } as Booking;
@@ -192,13 +201,16 @@ export const api = {
   async getTrips(): Promise<Trip[]> {
     const res = await fetch(`${API_BASE}/api/rides`);
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(text || `Failed to fetch rides: ${res.status}`);
+      const data = await safeJson(res);
+      const msg =
+        (typeof data === "object" && data && (data.error || data.message)) ||
+        (typeof data === "string" && data) ||
+        `Failed to fetch rides: ${res.status}`;
+      throw new Error(msg);
     }
     const data = await res.json();
-    return data.map((d: any) =>
-      d.source === "trips" ? mapTripDocToTrip(d.id, d) : mapRideDocToTrip(d.id, d)
-    );
+    const arr = ensureArray<any>(data);
+    return arr.map((d: any) => (d.source === "trips" ? mapTripDocToTrip(d.id, d) : mapRideDocToTrip(d.id, d)));
   },
 
   async getTrip(tripId: string, source: "rides" | "trips" = "rides"): Promise<Trip | null> {
@@ -209,7 +221,7 @@ export const api = {
   },
 
   async postTrip(tripData: Partial<Trip>): Promise<Trip> {
-    const res = await authedFetch("/rides", {
+    const res: any = await authedFetch("/rides", {
       method: "POST",
       body: JSON.stringify(tripData),
     });
@@ -235,12 +247,22 @@ export const api = {
   },
 
   async getMyWallet() {
-    return authedFetch("/wallet");
+    // ✅ ensure wallet shape (prevents UI crash)
+    const data: any = await authedFetch("/wallet");
+    return {
+      balance: num(data?.balance, 0),
+      balanceKobo: num(data?.balanceKobo, 0),
+    };
   },
 
-  // ✅ NEW: Driver escrow total & held escrows (backend must have GET /api/escrows/me)
+  // ✅ ensure escrow shape (prevents e.map crash)
   async getMyEscrows() {
-    return authedFetch("/escrows/me", { method: "GET" });
+    const data: any = await authedFetch("/escrows/me", { method: "GET" });
+    return {
+      totalKobo: num(data?.totalKobo, 0),
+      totalNaira: num(data?.totalNaira, 0),
+      items: ensureArray<any>(data?.items),
+    };
   },
 
   // ----------------------------
@@ -253,22 +275,22 @@ export const api = {
     });
   },
 
-  // ✅ Complete trip (release escrow to driver)
+  // ✅ Complete booking (release escrow to driver)
   async completeBooking(bookingId: string) {
     return authedFetch(`/bookings/${bookingId}/complete`, {
       method: "POST",
     });
   },
 
-  async bookTrip(tripId: string, source: "rides" | "trips" = "rides"): Promise<void> {
-    return authedFetch(`/rides/${tripId}/book`, { method: "POST" });
+  async bookTrip(tripId: string, _source: "rides" | "trips" = "rides"): Promise<void> {
+    return authedFetch(`/rides/${tripId}/book`, { method: "POST" }) as any;
   },
 
   async cancelBooking(tripId: string, source: "rides" | "trips" = "rides"): Promise<void> {
     return authedFetch(`/rides/${tripId}/cancel`, {
       method: "POST",
       body: JSON.stringify({ source }),
-    });
+    }) as any;
   },
 
   async updateBookingStatus(bookingId: string, status: string) {
@@ -286,7 +308,7 @@ export const api = {
   },
 
   async createBooking(bookingData: any): Promise<Booking> {
-    const res = await authedFetch("/bookings", {
+    const res: any = await authedFetch("/bookings", {
       method: "POST",
       body: JSON.stringify(bookingData),
     });
@@ -294,33 +316,31 @@ export const api = {
   },
 
   async getBookingsForTrip(tripId: string): Promise<Booking[]> {
-    const data = await authedFetch(`/bookings/trip/${tripId}`, { method: "GET" });
-    return (data || []).map((x: any) => mapBooking(x));
+    const data: any = await authedFetch(`/bookings/trip/${tripId}`, { method: "GET" });
+    return ensureArray<any>(data).map((x: any) => mapBooking(x));
   },
 
   // Passenger view
-  async getBookingsForUser(userId: string): Promise<Booking[]> {
-    const data = await authedFetch(`/bookings/user`, { method: "GET" });
-    return (data || []).map((x: any) => mapBooking(x));
+  async getBookingsForUser(_userId: string): Promise<Booking[]> {
+    const data: any = await authedFetch(`/bookings/user`, { method: "GET" });
+    return ensureArray<any>(data).map((x: any) => mapBooking(x));
   },
 
-  // ✅ NEW: Driver view (backend must have GET /api/bookings/driver)
+  // Driver view (if you add it)
   async getBookingsForDriver(): Promise<Booking[]> {
-    const data = await authedFetch(`/bookings/driver`, { method: "GET" });
-    return (data || []).map((x: any) => mapBooking(x));
+    const data: any = await authedFetch(`/bookings/driver`, { method: "GET" });
+    return ensureArray<any>(data).map((x: any) => mapBooking(x));
   },
 
   async deleteTrip(tripId: string, source: "rides" | "trips" = "rides") {
-    return authedFetch(`/rides/${tripId}?source=${source}`, {
-      method: "DELETE",
-    });
+    return authedFetch(`/rides/${tripId}?source=${source}`, { method: "DELETE" });
   },
 
   async getMe() {
     return authedFetch("/me", { method: "GET" });
   },
 
-  async getProfile(userId: string) {
+  async getProfile(_userId: string) {
     return authedFetch("/users/profile", { method: "GET" });
   },
 
@@ -339,7 +359,7 @@ export const api = {
   },
 
   // ----------------------------
-  // Driver withdrawal
+  // Driver withdrawal (you will add backend next)
   // ----------------------------
   async withdrawToBank(params: { amountNaira: number }) {
     const amountKobo = Math.round(params.amountNaira * 100);
@@ -349,14 +369,12 @@ export const api = {
     });
   },
 
-  async createTransaction(txData: any) {
-    return authedFetch("/transactions", {
-      method: "POST",
-      body: JSON.stringify(txData),
-    });
-  },
-
-  async getTransactions(userId: string) {
-    return authedFetch("/transactions", { method: "GET" });
+  // ----------------------------
+  // Transactions
+  // ----------------------------
+  async getTransactions(_userId?: string) {
+    const data: any = await authedFetch("/transactions", { method: "GET" });
+    // ✅ critical: always array so UI .map never crashes
+    return ensureArray<any>(data);
   },
 };
