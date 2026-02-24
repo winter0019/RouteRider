@@ -17,9 +17,10 @@ function bucketBooking(b: any): Bucket {
 
   if (s === "completed") return "completed";
 
-  if (["escrowed", "accepted", "confirmed"].includes(s)) return "confirmed";
+  // ✅ Paid statuses (show as confirmed)
+  if (["confirmed", "escrowed", "accepted"].includes(s)) return "confirmed";
 
-  // pending includes "pending_payment"
+  // pending includes pending_payment
   return "pending";
 }
 
