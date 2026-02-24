@@ -24,7 +24,6 @@ export default function AdminGuard({ children }: { children: React.ReactNode }) 
         // Claims are in the ID token result
         const token = await user.getIdTokenResult(true);
         const isAdmin = !!token.claims?.admin;
-
         setAllowed(isAdmin);
       } catch (err) {
         console.error("AdminGuard: failed to read claims:", err);
