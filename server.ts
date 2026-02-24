@@ -161,7 +161,7 @@ async function startServer() {
           }
 
           // BOOKING (Paystack) -> escrow
-          i// --------- Bookings ---------
+          // --------- Bookings ---------
 
 // Helper: get ride/trip and confirm owner
 async function assertDriverOwnsTrip(tripId: string, uid: string) {
