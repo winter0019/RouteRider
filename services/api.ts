@@ -1,6 +1,5 @@
-
 import { db, auth } from "./firebase";
-import { Trip, TripStatus, Booking, BookingStatus } from "../types";
+import { Trip, TripStatus, Booking } from "../types";
 
 const RIDES_COL = "rides";     // legacy/current
 const TRIPS_COL = "trips";     // optional new
@@ -10,25 +9,48 @@ const WALLETS_COL = "wallets";
 
 const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || "";
 
-if (typeof window !== 'undefined') {
+if (typeof window !== "undefined") {
   console.log("API_BASE:", API_BASE || "(relative)");
 }
 
-function requireAuth() {
+/**
+ * Wait for auth to be ready (prevents random "Not authenticated" on refresh)
+ */
+function waitForAuthReady(): Promise<void> {
+  return new Promise((resolve) => {
+    if (!auth) return resolve();
+
+    // If Firebase already knows user (or knows there is no user)
+    if (auth.currentUser !== null) return resolve();
+
+    // Wait a short moment for auth state
+    const unsub = auth.onAuthStateChanged(() => {
+      unsub();
+      resolve();
+    });
+  });
+}
+
+async function requireAuth() {
+  await waitForAuthReady();
   if (!auth?.currentUser) throw new Error("Not authenticated");
   return auth.currentUser;
 }
 
 async function authedFetch(path: string, options: RequestInit = {}) {
-  const user = requireAuth();
+  const user = await requireAuth();
+
   // Force refresh token to ensure it's valid for the backend
   const token = await user.getIdToken(true);
 
-  const headers = {
-    "Content-Type": "application/json",
-    ...(options.headers || {}),
+  // Only set Content-Type when body exists (avoid weird GET behavior)
+  const headers: Record<string, string> = {
+    ...(options.headers as any),
     Authorization: `Bearer ${token}`,
   };
+
+  const hasBody = !!options.body;
+  if (hasBody && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
 
   const res = await fetch(`${API_BASE}/api${path}`, {
     ...options,
@@ -41,12 +63,20 @@ async function authedFetch(path: string, options: RequestInit = {}) {
     try {
       const json = JSON.parse(text);
       errorMsg = json.error || json.message || errorMsg;
-    } catch (e) {
-      // Not JSON, use text
+    } catch {
+      // not json
     }
     throw new Error(errorMsg);
   }
-  return res.json();
+
+  // Some endpoints may return empty body
+  const txt = await res.text().catch(() => "");
+  if (!txt) return null;
+  try {
+    return JSON.parse(txt);
+  } catch {
+    return txt;
+  }
 }
 
 /** Safe helper */
@@ -71,7 +101,6 @@ const mapRideDocToTrip = (id: string, data: any): Trip => {
   const destination = String(data.destination || "");
 
   return {
-    // identifiers
     id,
     trip_id: id,
     source: "rides",
@@ -139,6 +168,23 @@ const mapTripDocToTrip = (id: string, data: any): Trip => {
   };
 };
 
+function mapBooking(data: any): Booking {
+  return {
+    booking_id: data.booking_id || data.id || data.bookingId,
+    trip_id: data.trip_id || data.rideId,
+    driver_id: data.driver_id || data.driverId,
+    passenger_id: data.passenger_id || data.passengerId,
+    passenger_name: data.passenger_name,
+    passenger_photo: data.passenger_photo,
+    passenger_rating: data.passenger_rating || 5.0,
+    passenger_trips: data.passenger_trips || 0,
+    seats_booked: data.seats_booked,
+    amount_paid: data.amount_paid ?? (data.amountKobo ? data.amountKobo / 100 : undefined),
+    status: data.status,
+    created_at: toISO(data.createdAt || data.created_at),
+  } as Booking;
+}
+
 export const api = {
   // ----------------------------
   // TRIPS
@@ -150,7 +196,9 @@ export const api = {
       throw new Error(text || `Failed to fetch rides: ${res.status}`);
     }
     const data = await res.json();
-    return data.map((d: any) => d.source === "trips" ? mapTripDocToTrip(d.id, d) : mapRideDocToTrip(d.id, d));
+    return data.map((d: any) =>
+      d.source === "trips" ? mapTripDocToTrip(d.id, d) : mapRideDocToTrip(d.id, d)
+    );
   },
 
   async getTrip(tripId: string, source: "rides" | "trips" = "rides"): Promise<Trip | null> {
@@ -175,20 +223,14 @@ export const api = {
     const amountKobo = Math.round(params.amountNaira * 100);
     return authedFetch("/paystack/topup/initialize", {
       method: "POST",
-      body: JSON.stringify({
-        amountKobo,
-        email: params.email,
-      }),
+      body: JSON.stringify({ amountKobo, email: params.email }),
     });
   },
 
   async initPaystackBooking(params: { rideId: string; email: string }) {
     return authedFetch("/paystack/booking/initialize", {
       method: "POST",
-      body: JSON.stringify({
-        rideId: params.rideId,
-        email: params.email,
-      }),
+      body: JSON.stringify({ rideId: params.rideId, email: params.email }),
     });
   },
 
@@ -196,8 +238,13 @@ export const api = {
     return authedFetch("/wallet");
   },
 
+  // ✅ NEW: Driver escrow total & held escrows (backend must have GET /api/escrows/me)
+  async getMyEscrows() {
+    return authedFetch("/escrows/me", { method: "GET" });
+  },
+
   // ----------------------------
-  // Booking with Wallet (server-side)
+  // Booking with Wallet (server-side escrow)
   // ----------------------------
   async bookTripWithWallet(rideId: string) {
     return authedFetch("/bookings/wallet", {
@@ -206,6 +253,7 @@ export const api = {
     });
   },
 
+  // ✅ Complete trip (release escrow to driver)
   async completeBooking(bookingId: string) {
     return authedFetch(`/bookings/${bookingId}/complete`, {
       method: "POST",
@@ -213,10 +261,6 @@ export const api = {
   },
 
   async bookTrip(tripId: string, source: "rides" | "trips" = "rides"): Promise<void> {
-    if (source === "trips") {
-      // trips still use client side for now if needed, but let's try to unify
-      return authedFetch(`/rides/${tripId}/book`, { method: "POST" });
-    }
     return authedFetch(`/rides/${tripId}/book`, { method: "POST" });
   },
 
@@ -246,61 +290,24 @@ export const api = {
       method: "POST",
       body: JSON.stringify(bookingData),
     });
-
-    return {
-      booking_id: res.id,
-      trip_id: res.trip_id,
-      driver_id: res.driver_id,
-      passenger_id: res.passenger_id,
-      passenger_name: res.passenger_name,
-      passenger_photo: res.passenger_photo,
-      passenger_rating: res.passenger_rating || 5.0,
-      passenger_trips: res.passenger_trips || 0,
-      seats_booked: res.seats_booked,
-      amount_paid: res.amount_paid,
-      status: res.status,
-      created_at: toISO(res.createdAt),
-    };
+    return mapBooking(res);
   },
 
   async getBookingsForTrip(tripId: string): Promise<Booking[]> {
-    const data = await authedFetch(`/bookings/trip/${tripId}`);
-    return data.map((data: any) => {
-      return {
-        booking_id: data.booking_id || data.id,
-        trip_id: data.trip_id,
-        driver_id: data.driver_id,
-        passenger_id: data.passenger_id,
-        passenger_name: data.passenger_name,
-        passenger_photo: data.passenger_photo,
-        passenger_rating: data.passenger_rating || 5.0,
-        passenger_trips: data.passenger_trips || 0,
-        seats_booked: data.seats_booked,
-        amount_paid: data.amount_paid,
-        status: data.status,
-        created_at: toISO(data.createdAt),
-      } as Booking;
-    });
+    const data = await authedFetch(`/bookings/trip/${tripId}`, { method: "GET" });
+    return (data || []).map((x: any) => mapBooking(x));
   },
 
+  // Passenger view
   async getBookingsForUser(userId: string): Promise<Booking[]> {
-    const data = await authedFetch(`/bookings/user`);
-    return data.map((data: any) => {
-      return {
-        booking_id: data.booking_id || data.id,
-        trip_id: data.trip_id,
-        driver_id: data.driver_id,
-        passenger_id: data.passenger_id,
-        passenger_name: data.passenger_name,
-        passenger_photo: data.passenger_photo,
-        passenger_rating: data.passenger_rating || 5.0,
-        passenger_trips: data.passenger_trips || 0,
-        seats_booked: data.seats_booked,
-        amount_paid: data.amount_paid,
-        status: data.status,
-        created_at: toISO(data.createdAt),
-      } as Booking;
-    });
+    const data = await authedFetch(`/bookings/user`, { method: "GET" });
+    return (data || []).map((x: any) => mapBooking(x));
+  },
+
+  // ✅ NEW: Driver view (backend must have GET /api/bookings/driver)
+  async getBookingsForDriver(): Promise<Booking[]> {
+    const data = await authedFetch(`/bookings/driver`, { method: "GET" });
+    return (data || []).map((x: any) => mapBooking(x));
   },
 
   async deleteTrip(tripId: string, source: "rides" | "trips" = "rides") {
@@ -332,7 +339,7 @@ export const api = {
   },
 
   // ----------------------------
-  // Driver withdrawal (Paystack Transfers) - backend only
+  // Driver withdrawal
   // ----------------------------
   async withdrawToBank(params: { amountNaira: number }) {
     const amountKobo = Math.round(params.amountNaira * 100);
