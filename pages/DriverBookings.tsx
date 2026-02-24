@@ -6,15 +6,20 @@ import { Booking, Trip } from "../types";
 
 type Bucket = "pending" | "confirmed" | "completed";
 
+/**
+ * ✅ Booking bucket rules (driver dashboard)
+ * - completed => completed
+ * - paid/escrowed/accepted/confirmed => confirmed
+ * - pending/pending_payment => pending
+ */
 function bucketBooking(b: any): Bucket {
-  const s = String(b.status || "").toLowerCase();
+  const s = String(b?.status || "").toLowerCase();
 
   if (s === "completed") return "completed";
 
-  // treat escrowed as CONFIRMED (paid & held)
-  if (s === "accepted" || s === "escrowed") return "confirmed";
+  if (["escrowed", "accepted", "confirmed"].includes(s)) return "confirmed";
 
-  // pending (includes waiting payment)
+  // pending includes "pending_payment"
   return "pending";
 }
 
@@ -29,25 +34,26 @@ export default function DriverBookings() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 1) Wait for auth (prevents Not authenticated)
+  // 1) Wait for auth
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth as any, (u) => {
-      setUid(u?.uid || null);
-    });
+    const unsub = onAuthStateChanged(auth as any, (u) => setUid(u?.uid || null));
     return () => unsub();
   }, []);
 
-  // 2) Load driver trips
+  // 2) Load driver trips (only mine)
   const loadTrips = async () => {
     try {
       setError(null);
       const all = await api.getTrips();
-      const mine = all.filter((t) => t.driver_id === uid || t.carOwnerId === uid);
+
+      const mine = (all || []).filter((t) => t.driver_id === uid || t.carOwnerId === uid);
+
       // newest first
       mine.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
       setTrips(mine);
 
+      // set a safe active trip (must be an existing trip_id)
       if (!activeTripId && mine.length > 0) {
         setActiveTripId(mine[0].trip_id || mine[0].id);
       }
@@ -60,10 +66,18 @@ export default function DriverBookings() {
   const loadBookings = async (tripId: string) => {
     try {
       setError(null);
+
+      // backend will return either:
+      // - all bookings (if driver owns trip)
+      // - only passenger bookings (if not owner)
       const list = await api.getBookingsForTrip(tripId);
+
+      const arr = Array.isArray(list) ? list : [];
+
       // newest first
-      list.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-      setBookings(list);
+      arr.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      setBookings(arr);
     } catch (e: any) {
       setError(e.message || "Failed to load bookings");
       setBookings([]);
@@ -93,7 +107,7 @@ export default function DriverBookings() {
     const confirmed: Booking[] = [];
     const completed: Booking[] = [];
 
-    for (const b of bookings) {
+    for (const b of bookings || []) {
       const bucket = bucketBooking(b);
       if (bucket === "pending") pending.push(b);
       if (bucket === "confirmed") confirmed.push(b);
@@ -106,14 +120,15 @@ export default function DriverBookings() {
   const confirmedCount = buckets.confirmed.length;
   const pendingCount = buckets.pending.length;
 
-  // This is the button your UI already has
+  // ✅ Complete Trip: releases escrow + credits driver wallet
   const completeTrip = async () => {
     if (!activeTripId) return;
     setBusy(true);
     try {
+      // you already have this endpoint on backend: POST /api/trips/:tripId/complete
       await api.completeTrip(activeTripId);
       await loadBookings(activeTripId);
-      await loadTrips(); // refresh status + counts
+      await loadTrips();
     } catch (e: any) {
       alert(e.message || "Failed to complete trip");
     } finally {
@@ -177,11 +192,14 @@ export default function DriverBookings() {
           onChange={(e) => setActiveTripId(e.target.value)}
           className="w-full border-2 border-slate-100 rounded-2xl px-4 py-3 font-bold"
         >
-          {trips.map((t) => (
-            <option key={t.trip_id} value={t.trip_id}>
-              {t.route} • {t.departure_time || t.time || "Time"} • seats {t.seats_booked}/{t.seats_available}
-            </option>
-          ))}
+          {trips.map((t) => {
+            const tripKey = t.trip_id || t.id;
+            return (
+              <option key={tripKey} value={tripKey}>
+                {t.route} • {t.departure_time || t.time || "Time"} • seats {t.seats_booked}/{t.seats_available}
+              </option>
+            );
+          })}
         </select>
       </section>
 
@@ -190,11 +208,12 @@ export default function DriverBookings() {
         <div className="p-4 bg-amber-50 rounded-3xl border-2 border-amber-100">
           <p className="text-[10px] font-black uppercase text-amber-500 tracking-widest mb-1">Pending</p>
           <p className="text-2xl font-black text-amber-900">{pendingCount}</p>
+          <p className="text-[10px] font-bold text-amber-700">Includes PENDING_PAYMENT</p>
         </div>
         <div className="p-4 bg-emerald-50 rounded-3xl border-2 border-emerald-100">
           <p className="text-[10px] font-black uppercase text-emerald-500 tracking-widest mb-1">Confirmed</p>
           <p className="text-2xl font-black text-emerald-900">{confirmedCount}</p>
-          <p className="text-[10px] font-bold text-emerald-700">Includes ESCROWED payments</p>
+          <p className="text-[10px] font-bold text-emerald-700">Includes ESCROWED / ACCEPTED</p>
         </div>
         <div className="p-4 bg-slate-50 rounded-3xl border-2 border-slate-100">
           <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Completed</p>
@@ -217,9 +236,7 @@ export default function DriverBookings() {
             {buckets.pending.map((b: any) => (
               <div key={b.booking_id} className="p-5 bg-slate-50 border-2 border-slate-100 rounded-3xl">
                 <p className="font-black">{b.passenger_name || b.passenger_id}</p>
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">
-                  Status: {b.status}
-                </p>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Status: {b.status}</p>
               </div>
             ))}
           </div>
@@ -279,9 +296,7 @@ export default function DriverBookings() {
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="font-black">{b.passenger_name || b.passenger_id}</p>
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">
-                      COMPLETED
-                    </p>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">COMPLETED</p>
                   </div>
                   <p className="font-black">₦{Number(b.amount_paid || 0).toFixed(0)}</p>
                 </div>
