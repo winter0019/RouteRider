@@ -260,6 +260,94 @@ async function startServer() {
     }
   });
 
+// ==============================
+// Admin Claim Management
+// ==============================
+const ADMIN_BOOTSTRAP_KEY = process.env.ADMIN_BOOTSTRAP_KEY || "";
+
+/**
+ * Bootstrap: Set first admin using a secret key
+ * POST /api/admin/bootstrap
+ * body: { uid: string, key: string }
+ */
+app.post("/api/admin/bootstrap", async (req: any, res) => {
+  try {
+    const { uid, key } = req.body || {};
+    if (!uid || !key) return res.status(400).json({ error: "uid and key required" });
+
+    if (!ADMIN_BOOTSTRAP_KEY || key !== ADMIN_BOOTSTRAP_KEY) {
+      return res.status(403).json({ error: "Invalid bootstrap key" });
+    }
+
+    // Set claim
+    await admin.auth().setCustomUserClaims(uid, { admin: true });
+
+    // Store role in Firestore for UI convenience (claims are still source-of-truth)
+    await db.collection("users").doc(uid).set(
+      { role: "admin", isAdmin: true, updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+
+    return res.json({ ok: true, message: `Admin claim granted to ${uid}` });
+  } catch (err: any) {
+    console.error("Bootstrap admin error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Admin-only: grant admin to a user
+ * POST /api/admin/users/:uid/grant
+ */
+app.post("/api/admin/users/:uid/grant", requireFirebaseAuth, requireAdmin, async (req: any, res) => {
+  try {
+    const targetUid = req.params.uid;
+
+    // merge existing claims if you later add more
+    const userRecord = await admin.auth().getUser(targetUid);
+    const currentClaims = (userRecord.customClaims || {}) as Record<string, any>;
+
+    await admin.auth().setCustomUserClaims(targetUid, { ...currentClaims, admin: true });
+
+    await db.collection("users").doc(targetUid).set(
+      { role: "admin", isAdmin: true, updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+
+    return res.json({ ok: true });
+  } catch (err: any) {
+    console.error("Grant admin error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Admin-only: revoke admin
+ * POST /api/admin/users/:uid/revoke
+ */
+app.post("/api/admin/users/:uid/revoke", requireFirebaseAuth, requireAdmin, async (req: any, res) => {
+  try {
+    const targetUid = req.params.uid;
+
+    const userRecord = await admin.auth().getUser(targetUid);
+    const currentClaims = (userRecord.customClaims || {}) as Record<string, any>;
+    delete currentClaims.admin;
+
+    await admin.auth().setCustomUserClaims(targetUid, currentClaims);
+
+    await db.collection("users").doc(targetUid).set(
+      { role: "user", isAdmin: false, updatedAt: admin.firestore.FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+
+    return res.json({ ok: true });
+  } catch (err: any) {
+    console.error("Revoke admin error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+
   // --------- Rides ---------
   app.get("/api/rides", async (req, res) => {
     console.log(`[${new Date().toISOString()}] GET /api/rides - Fetching all rides and trips`);
