@@ -2,29 +2,71 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isSignedIn() { return request.auth != null; }
-    function isAdmin() { return isSignedIn() && request.auth.token.admin == true; }
-    function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
+    // =========================================================
+    // Helpers
+    // =========================================================
+    function signedIn() {
+      return request.auth != null;
+    }
 
-    // =============================
-    // RIDES /rides/{rideId}
-    // =============================
+    function isOwnerByField(fieldName) {
+      return signedIn() && resource.data[fieldName] == request.auth.uid;
+    }
+
+    // Safe check: doc exists before reading fields (prevents rule errors)
+    function rideDoc(tripId) {
+      return get(/databases/$(database)/documents/rides/$(tripId));
+    }
+    function tripDoc(tripId) {
+      return get(/databases/$(database)/documents/trips/$(tripId));
+    }
+    function rideExists(tripId) {
+      return rideDoc(tripId).exists();
+    }
+    function tripExists(tripId) {
+      return tripDoc(tripId).exists();
+    }
+
+    function isDriverOfTrip(tripId) {
+      return signedIn() && (
+        (rideExists(tripId) && rideDoc(tripId).data.carOwnerId == request.auth.uid) ||
+        (tripExists(tripId) && tripDoc(tripId).data.driver_id == request.auth.uid)
+      );
+    }
+
+    function isPassengerBookingDoc() {
+      return signedIn() && resource.data.passenger_id == request.auth.uid;
+    }
+
+    // =========================================================
+    // RIDES (legacy)  /rides/{rideId}
+    // Fields (minimum):
+    // carOwnerId, bookedBy[], origin, destination, time,
+    // seats_available, seats_booked, createdAt
+    // =========================================================
     match /rides/{rideId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn()
-        && request.resource.data.carOwnerId == request.auth.uid
-        && request.resource.data.bookedBy is list
-        && request.resource.data.seats_available is int
-        && request.resource.data.seats_booked is int
-        && request.resource.data.seats_available >= 1
-        && request.resource.data.seats_booked == 0;
+      // ✅ allow any signed-in user to read rides
+      allow read: if signedIn();
 
-      allow update: if isAdmin() || (isSignedIn() && (
+      // ✅ only car owner creates
+      allow create: if signedIn()
+        && request.resource.data.carOwnerId == request.auth.uid
+        && request.resource.data.bookedBy is list;
+
+      // ✅ updates:
+      // - owner can update anything
+      // - passenger can ONLY join/leave bookedBy AND change seats_booked accordingly
+      allow update: if signedIn() && (
+        // owner full control
         resource.data.carOwnerId == request.auth.uid ||
+
+        // passenger booking/cancel
         (
           request.resource.data.diff(resource.data).changedKeys()
-            .hasOnly(['bookedBy', 'seats_booked']) &&
+            .hasOnly(['bookedBy','seats_booked']) &&
+
           (
+            // JOIN
             (
               !resource.data.bookedBy.hasAny([request.auth.uid]) &&
               request.resource.data.bookedBy.hasAny([request.auth.uid]) &&
@@ -32,6 +74,7 @@ service cloud.firestore {
               request.resource.data.seats_booked <= resource.data.seats_available
             )
             ||
+            // LEAVE
             (
               resource.data.bookedBy.hasAny([request.auth.uid]) &&
               !request.resource.data.bookedBy.hasAny([request.auth.uid]) &&
@@ -40,76 +83,526 @@ service cloud.firestore {
             )
           )
         )
-      ));
-      allow delete: if isAdmin() || (isSignedIn() && resource.data.carOwnerId == request.auth.uid);
+      );
+
+      // ✅ only owner deletes
+      allow delete: if signedIn() && resource.data.carOwnerId == request.auth.uid;
     }
 
+
+    // =========================================================
+    // TRIPS (new) /trips/{tripId}
+    // Fields (minimum):
+    // driver_id, bookedBy[], seats_available, seats_booked, createdAt
+    // =========================================================
     match /trips/{tripId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && request.resource.data.driver_id == request.auth.uid;
-      allow update: if isAdmin() || (isSignedIn() && (
+      // ✅ allow any signed-in user to read trips
+      allow read: if signedIn();
+
+      // ✅ driver creates trip
+      allow create: if signedIn()
+        && request.resource.data.driver_id == request.auth.uid
+        && request.resource.data.bookedBy is list
+        && request.resource.data.seats_available is int
+        && request.resource.data.seats_booked is int
+        && request.resource.data.seats_available >= 1
+        && request.resource.data.seats_booked >= 0
+        && request.resource.data.seats_booked <= request.resource.data.seats_available;
+
+      // ✅ updates:
+      // - driver can update anything
+      // - passenger can ONLY book/cancel by changing bookedBy + seats_booked
+      allow update: if signedIn() && (
+        // driver full control
         resource.data.driver_id == request.auth.uid ||
-        request.resource.data.diff(resource.data).changedKeys().hasOnly(['bookedBy','seats_booked'])
-      ));
-      allow delete: if isAdmin() || (isSignedIn() && resource.data.driver_id == request.auth.uid);
+
+        // passenger booking/cancel
+        (
+          request.resource.data.diff(resource.data).changedKeys()
+            .hasOnly(['bookedBy','seats_booked']) &&
+
+          (
+            // BOOK
+            (
+              !resource.data.bookedBy.hasAny([request.auth.uid]) &&
+              request.resource.data.bookedBy.hasAny([request.auth.uid]) &&
+              request.resource.data.seats_booked == resource.data.seats_booked + 1 &&
+              request.resource.data.seats_booked <= resource.data.seats_available
+            )
+            ||
+            // CANCEL
+            (
+              resource.data.bookedBy.hasAny([request.auth.uid]) &&
+              !request.resource.data.bookedBy.hasAny([request.auth.uid]) &&
+              request.resource.data.seats_booked == resource.data.seats_booked - 1 &&
+              request.resource.data.seats_booked >= 0
+            )
+          )
+        )
+      );
+
+      // ✅ only driver deletes
+      allow delete: if signedIn() && resource.data.driver_id == request.auth.uid;
     }
 
+
+    // =========================================================
+    // BOOKINGS /bookings/{bookingId}
+    // Fields (minimum):
+    // trip_id, passenger_id, status, createdAt
+    //
+    // NOTE:
+    // - passenger can read their own booking
+    // - driver can read bookings tied to their trip
+    // - passenger can cancel only (status -> cancelled)
+    // - driver can accept/reject/complete (you decide statuses)
+    // =========================================================
     match /bookings/{bookingId} {
-      allow read: if isAdmin() || (isSignedIn() && (
-        request.auth.uid == resource.data.passenger_id || 
-        request.auth.uid == resource.data.driver_id
-      ));
-      allow create: if isSignedIn() && request.resource.data.passenger_id == request.auth.uid;
-      allow update, delete: if isAdmin() || (isSignedIn() && (
-        request.auth.uid == resource.data.passenger_id || 
-        request.auth.uid == resource.data.driver_id
-      ));
+
+      // ✅ read:
+      // passenger reads own booking OR driver reads bookings for their trip
+      allow read: if signedIn() && (
+        resource.data.passenger_id == request.auth.uid ||
+        isDriverOfTrip(resource.data.trip_id)
+      );
+
+      // ✅ create:
+      // passenger creates own booking only
+      allow create: if signedIn()
+        && request.resource.data.passenger_id == request.auth.uid;
+
+      // ✅ update:
+      // - passenger can cancel their own booking only
+      // - driver can update status for bookings that belong to their trip
+      allow update: if signedIn() && (
+
+        // passenger cancels own booking
+        (
+          resource.data.passenger_id == request.auth.uid &&
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(['status']) &&
+          request.resource.data.status in ['cancelled']
+        )
+
+        ||
+
+        // driver updates booking status (for their trip)
+        (
+          isDriverOfTrip(resource.data.trip_id) &&
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(['status']) &&
+          request.resource.data.status in [
+            'pending',
+            'accepted',
+            'rejected',
+            'cancelled',
+            'pending_payment',
+            'escrowed',
+            'completed'
+          ]
+        )
+      );
+
+      // ✅ delete:
+      // allow delete only by passenger who created it
+      allow delete: if signedIn() && resource.data.passenger_id == request.auth.uid;
     }
 
-    match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow create, update: if isOwner(userId);
-      allow delete: if isAdmin();
-    }
 
+    // =========================================================
+    // WALLETS /wallets/{uid}
+    // Fields: uid, balanceKobo, updatedAt
+    // IMPORTANT: client must NOT edit balance directly
+    // =========================================================
     match /wallets/{uid} {
-      allow read: if isOwner(uid) || isAdmin();
-      allow create: if isOwner(uid) && request.resource.data.balanceKobo == 0;
+      // read own wallet
+      allow read: if signedIn() && request.auth.uid == uid;
+
+      // create wallet once with balance = 0
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.balanceKobo == 0;
+
+      // server-only updates
       allow update, delete: if false;
     }
 
+
+    // =========================================================
+    // TRANSACTIONS /transactions/{txId}
+    // Fields recommended:
+    // uid, type, amountKobo, status, reference, createdAt, meta
+    //
+    // Client may CREATE only "pending" requests:
+    // - topup
+    // - withdrawal_request
+    //
+    // Server (Admin SDK) will create success/failed rows and
+    // will update wallet balances.
+    // =========================================================
     match /transactions/{txId} {
-      allow read: if isAdmin() || (isSignedIn() && (
-        resource.data.uid == request.auth.uid || 
-        resource.data.user_id == request.auth.uid ||
-        resource.data.userId == request.auth.uid
-      ));
-      allow create: if isSignedIn()
+      // read only own transactions
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+
+      // create ONLY pending requests
+      allow create: if signedIn()
         && request.resource.data.uid == request.auth.uid
-        && request.resource.data.status == "pending"
-        && request.resource.data.type in ["topup","withdrawal_request"];
+        && request.resource.data.status in ['pending']
+        && request.resource.data.amountKobo is int
+        && request.resource.data.amountKobo > 0
+        && request.resource.data.type in ['topup','withdrawal_request'];
+
+      // block client from changing status (prevents fraud)
       allow update, delete: if false;
     }
 
-    match /kyc_submissions/{uid} {
-      allow read: if isOwner(uid) || isAdmin();
-      allow create: if isOwner(uid) && request.resource.data.status == "submitted";
-      allow update: if isOwner(uid)
-        && resource.data.status in ["none","submitted","rejected"]
-        && request.resource.data.status == "submitted";
-      allow delete: if isAdmin();
+
+    // =========================================================
+    // WITHDRAWALS /withdrawals/{withdrawalId}
+    // Fields:
+    // uid, amountKobo, status, createdAt, transfer_code(optional)
+    //
+    // Client can create a withdrawal request (pending) only.
+    // Server processes and updates status + performs Paystack transfer.
+    // =========================================================
+    match /withdrawals/{withdrawalId} {
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================
+    // Helpers
+    // =========================================================
+    function signedIn() {
+      return request.auth != null;
     }
 
-    match /escrows/{escrowId} {
-      allow read: if isAdmin();
+    function isOwnerByField(fieldName) {
+      return signedIn() && resource.data[fieldName] == request.auth.uid;
+    }
+
+    // Safe check: doc exists before reading fields (prevents rule errors)
+    function rideDoc(tripId) {
+      return get(/databases/$(database)/documents/rides/$(tripId));
+    }
+    function tripDoc(tripId) {
+      return get(/databases/$(database)/documents/trips/$(tripId));
+    }
+    function rideExists(tripId) {
+      return rideDoc(tripId).exists();
+    }
+    function tripExists(tripId) {
+      return tripDoc(tripId).exists();
+    }
+
+    function isDriverOfTrip(tripId) {
+      return signedIn() && (
+        (rideExists(tripId) && rideDoc(tripId).data.carOwnerId == request.auth.uid) ||
+        (tripExists(tripId) && tripDoc(tripId).data.driver_id == request.auth.uid)
+      );
+    }
+
+    function isPassengerBookingDoc() {
+      return signedIn() && resource.data.passenger_id == request.auth.uid;
+    }
+
+    // =========================================================
+    // RIDES (legacy)  /rides/{rideId}
+    // Fields (minimum):
+    // carOwnerId, bookedBy[], origin, destination, time,
+    // seats_available, seats_booked, createdAt
+    // =========================================================
+    match /rides/{rideId} {
+      // ✅ allow any signed-in user to read rides
+      allow read: if signedIn();
+
+      // ✅ only car owner creates
+      allow create: if signedIn()
+        && request.resource.data.carOwnerId == request.auth.uid
+        && request.resource.data.bookedBy is list;
+
+      // ✅ updates:
+      // - owner can update anything
+      // - passenger can ONLY join/leave bookedBy AND change seats_booked accordingly
+      allow update: if signedIn() && (
+        // owner full control
+        resource.data.carOwnerId == request.auth.uid ||
+
+        // passenger booking/cancel
+        (
+          request.resource.data.diff(resource.data).changedKeys()
+            .hasOnly(['bookedBy','seats_booked']) &&
+
+          (
+            // JOIN
+            (
+              !resource.data.bookedBy.hasAny([request.auth.uid]) &&
+              request.resource.data.bookedBy.hasAny([request.auth.uid]) &&
+              request.resource.data.seats_booked == resource.data.seats_booked + 1 &&
+              request.resource.data.seats_booked <= resource.data.seats_available
+            )
+            ||
+            // LEAVE
+            (
+              resource.data.bookedBy.hasAny([request.auth.uid]) &&
+              !request.resource.data.bookedBy.hasAny([request.auth.uid]) &&
+              request.resource.data.seats_booked == resource.data.seats_booked - 1 &&
+              request.resource.data.seats_booked >= 0
+            )
+          )
+        )
+      );
+
+      // ✅ only owner deletes
+      allow delete: if signedIn() && resource.data.carOwnerId == request.auth.uid;
+    }
+
+
+    // =========================================================
+    // TRIPS (new) /trips/{tripId}
+    // Fields (minimum):
+    // driver_id, bookedBy[], seats_available, seats_booked, createdAt
+    // =========================================================
+    match /trips/{tripId} {
+      // ✅ allow any signed-in user to read trips
+      allow read: if signedIn();
+
+      // ✅ driver creates trip
+      allow create: if signedIn()
+        && request.resource.data.driver_id == request.auth.uid
+        && request.resource.data.bookedBy is list
+        && request.resource.data.seats_available is int
+        && request.resource.data.seats_booked is int
+        && request.resource.data.seats_available >= 1
+        && request.resource.data.seats_booked >= 0
+        && request.resource.data.seats_booked <= request.resource.data.seats_available;
+
+      // ✅ updates:
+      // - driver can update anything
+      // - passenger can ONLY book/cancel by changing bookedBy + seats_booked
+      allow update: if signedIn() && (
+        // driver full control
+        resource.data.driver_id == request.auth.uid ||
+
+        // passenger booking/cancel
+        (
+          request.resource.data.diff(resource.data).changedKeys()
+            .hasOnly(['bookedBy','seats_booked']) &&
+
+          (
+            // BOOK
+            (
+              !resource.data.bookedBy.hasAny([request.auth.uid]) &&
+              request.resource.data.bookedBy.hasAny([request.auth.uid]) &&
+              request.resource.data.seats_booked == resource.data.seats_booked + 1 &&
+              request.resource.data.seats_booked <= resource.data.seats_available
+            )
+            ||
+            // CANCEL
+            (
+              resource.data.bookedBy.hasAny([request.auth.uid]) &&
+              !request.resource.data.bookedBy.hasAny([request.auth.uid]) &&
+              request.resource.data.seats_booked == resource.data.seats_booked - 1 &&
+              request.resource.data.seats_booked >= 0
+            )
+          )
+        )
+      );
+
+      // ✅ only driver deletes
+      allow delete: if signedIn() && resource.data.driver_id == request.auth.uid;
+    }
+
+
+    // =========================================================
+    // BOOKINGS /bookings/{bookingId}
+    // Fields (minimum):
+    // trip_id, passenger_id, status, createdAt
+    //
+    // NOTE:
+    // - passenger can read their own booking
+    // - driver can read bookings tied to their trip
+    // - passenger can cancel only (status -> cancelled)
+    // - driver can accept/reject/complete (you decide statuses)
+    // =========================================================
+    match /bookings/{bookingId} {
+
+      // ✅ read:
+      // passenger reads own booking OR driver reads bookings for their trip
+      allow read: if signedIn() && (
+        resource.data.passenger_id == request.auth.uid ||
+        isDriverOfTrip(resource.data.trip_id)
+      );
+
+      // ✅ create:
+      // passenger creates own booking only
+      allow create: if signedIn()
+        && request.resource.data.passenger_id == request.auth.uid;
+
+      // ✅ update:
+      // - passenger can cancel their own booking only
+      // - driver can update status for bookings that belong to their trip
+      allow update: if signedIn() && (
+
+        // passenger cancels own booking
+        (
+          resource.data.passenger_id == request.auth.uid &&
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(['status']) &&
+          request.resource.data.status in ['cancelled']
+        )
+
+        ||
+
+        // driver updates booking status (for their trip)
+        (
+          isDriverOfTrip(resource.data.trip_id) &&
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(['status']) &&
+          request.resource.data.status in [
+            'pending',
+            'accepted',
+            'rejected',
+            'cancelled',
+            'pending_payment',
+            'escrowed',
+            'completed'
+          ]
+        )
+      );
+
+      // ✅ delete:
+      // allow delete only by passenger who created it
+      allow delete: if signedIn() && resource.data.passenger_id == request.auth.uid;
+    }
+
+
+    // =========================================================
+    // WALLETS /wallets/{uid}
+    // Fields: uid, balanceKobo, updatedAt
+    // IMPORTANT: client must NOT edit balance directly
+    // =========================================================
+    match /wallets/{uid} {
+      // read own wallet
+      allow read: if signedIn() && request.auth.uid == uid;
+
+      // create wallet once with balance = 0
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.balanceKobo == 0;
+
+      // server-only updates
+      allow update, delete: if false;
+    }
+
+
+    // =========================================================
+    // TRANSACTIONS /transactions/{txId}
+    // Fields recommended:
+    // uid, type, amountKobo, status, reference, createdAt, meta
+    //
+    // Client may CREATE only "pending" requests:
+    // - topup
+    // - withdrawal_request
+    //
+    // Server (Admin SDK) will create success/failed rows and
+    // will update wallet balances.
+    // =========================================================
+    match /transactions/{txId} {
+      // read only own transactions
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+
+      // create ONLY pending requests
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status in ['pending']
+        && request.resource.data.amountKobo is int
+        && request.resource.data.amountKobo > 0
+        && request.resource.data.type in ['topup','withdrawal_request'];
+
+      // block client from changing status (prevents fraud)
+      allow update, delete: if false;
+    }
+
+
+    // =========================================================
+    // WITHDRAWALS /withdrawals/{withdrawalId}
+    // Fields:
+    // uid, amountKobo, status, createdAt, transfer_code(optional)
+    //
+    // Client can create a withdrawal request (pending) only.
+    // Server processes and updates status + performs Paystack transfer.
+    // =========================================================
+    match /withdrawals/{withdrawalId} {
+      // read own withdrawal requests
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+
+      // create withdrawal request (pending)
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status in ['pending']
+        && request.resource.data.amountKobo is int
+        && request.resource.data.amountKobo >= 500000; // ₦5,000 in kobo
+
+      // server-only updates/deletes
+      allow update, delete: if false;
+    }
+
+
+    // =========================================================
+    // USERS /users/{userId}
+    // (If you are storing wallet_balance inside users, it must be server-only.
+    //  Keep this write rule ONLY if you are NOT storing wallet balance here,
+    //  or split profile fields into /profiles)
+    // =========================================================
+    match /users/{userId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+
+      // ✅ safest: server-only writes (recommended when wallet exists)
+      // If you still want client profile edits, restrict keys to non-money fields.
       allow write: if false;
     }
 
-    match /app_settings/{documentId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+
+    // =========================================================
+    // DENY EVERYTHING ELSE
+    // =========================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+      // read own withdrawal requests
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+
+      // create withdrawal request (pending)
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status in ['pending']
+        && request.resource.data.amountKobo is int
+        && request.resource.data.amountKobo >= 500000; // ₦5,000 in kobo
+
+      // server-only updates/deletes
+      allow update, delete: if false;
     }
 
+
+    // =========================================================
+    // USERS /users/{userId}
+    // (If you are storing wallet_balance inside users, it must be server-only.
+    //  Keep this write rule ONLY if you are NOT storing wallet balance here,
+    //  or split profile fields into /profiles)
+    // =========================================================
+    match /users/{userId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+
+      // ✅ safest: server-only writes (recommended when wallet exists)
+      // If you still want client profile edits, restrict keys to non-money fields.
+      allow write: if false;
+    }
+
+
+    // =========================================================
+    // DENY EVERYTHING ELSE
+    // =========================================================
     match /{document=**} {
       allow read, write: if false;
     }

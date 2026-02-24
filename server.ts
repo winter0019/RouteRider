@@ -173,7 +173,7 @@ async function startServer() {
     }
   });
 
-  app.use(express.json());
+  app.use(express.json({ limit: '10mb' }));
 
   // Request logging
   app.use((req, res, next) => {
@@ -218,11 +218,17 @@ async function startServer() {
   app.get("/api/admin/kyc", requireFirebaseAuth, requireAdmin, async (req, res) => {
     try {
       const snap = await db.collection("kyc_submissions")
-        .orderBy("createdAt", "desc")
         .limit(100)
         .get();
 
-      res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const submissions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      submissions.sort((a: any, b: any) => {
+        const dateA = a.createdAt?.toDate?.()?.getTime() || 0;
+        const dateB = b.createdAt?.toDate?.()?.getTime() || 0;
+        return dateB - dateA;
+      });
+
+      res.json(submissions);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -256,16 +262,20 @@ async function startServer() {
 
   // --------- Rides ---------
   app.get("/api/rides", async (req, res) => {
+    console.log(`[${new Date().toISOString()}] GET /api/rides - Fetching all rides and trips`);
     try {
-      const ridesSnap = await db.collection(RIDES_COL).orderBy("createdAt", "desc").get();
-      const tripsSnap = await db.collection(TRIPS_COL).orderBy("createdAt", "desc").get();
+      // Remove orderBy to avoid index requirement errors
+      const ridesSnap = await db.collection(RIDES_COL).get();
+      const tripsSnap = await db.collection(TRIPS_COL).get();
+      
+      console.log(`[${new Date().toISOString()}] GET /api/rides - Found ${ridesSnap.size} rides and ${tripsSnap.size} trips`);
 
       const rides = ridesSnap.docs.map(d => ({
         id: d.id,
         trip_id: d.id,
         source: "rides",
         ...d.data(),
-        created_at: d.data().createdAt?.toDate?.()?.toISOString() || new Date().toISOString()
+        created_at: d.data().createdAt?.toDate?.()?.toISOString() || d.data().created_at || new Date().toISOString()
       }));
 
       const trips = tripsSnap.docs.map(d => ({
@@ -273,7 +283,7 @@ async function startServer() {
         trip_id: d.id,
         source: "trips",
         ...d.data(),
-        created_at: d.data().createdAt?.toDate?.()?.toISOString() || new Date().toISOString()
+        created_at: d.data().createdAt?.toDate?.()?.toISOString() || d.data().created_at || new Date().toISOString()
       }));
 
       const all = [...rides, ...trips].sort((a: any, b: any) => {
@@ -282,6 +292,7 @@ async function startServer() {
 
       res.json(all);
     } catch (err: any) {
+      console.error("Rides Fetch Error:", err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -338,6 +349,16 @@ async function startServer() {
     }
   });
 
+  app.get("/api/wallet", requireFirebaseAuth, async (req: any, res) => {
+    try {
+      const snap = await db.collection(WALLETS_COL).doc(req.uid).get();
+      if (!snap.exists) return res.json({ balance: 0, balanceKobo: 0 });
+      res.json(snap.data());
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post("/api/users/profile", requireFirebaseAuth, async (req: any, res) => {
     try {
       const data = req.body;
@@ -351,7 +372,110 @@ async function startServer() {
     }
   });
 
-  // --------- Unified Booking Route ---------
+  app.post("/api/kyc/submit", requireFirebaseAuth, async (req: any, res) => {
+    try {
+      const data = req.body;
+      const submission = {
+        ...data,
+        uid: req.uid,
+        status: 'submitted',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      };
+
+      await db.collection("kyc_submissions").doc(req.uid).set(submission);
+      
+      // Also update user's kycStatus
+      await db.collection("users").doc(req.uid).set({ 
+        kycStatus: 'submitted' 
+      }, { merge: true });
+
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("KYC Submit Error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // --------- Bookings ---------
+  app.get("/api/bookings/trip/:tripId", requireFirebaseAuth, async (req, res) => {
+    try {
+      const { tripId } = req.params;
+      const snap = await db.collection("bookings")
+        .where("trip_id", "==", tripId)
+        .get();
+      
+      res.json(snap.docs.map(d => ({ booking_id: d.id, ...d.data() })));
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/bookings/user", requireFirebaseAuth, async (req: any, res) => {
+    try {
+      const snap = await db.collection("bookings")
+        .where("passenger_id", "==", req.uid)
+        .get();
+      
+      res.json(snap.docs.map(d => ({ booking_id: d.id, ...d.data() })));
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/bookings/:bookingId/status", requireFirebaseAuth, async (req: any, res) => {
+    try {
+      const { bookingId } = req.params;
+      const { status } = req.body;
+      await db.collection("bookings").doc(bookingId).update({ status });
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/rides/:rideId/status", requireFirebaseAuth, async (req: any, res) => {
+    try {
+      const { rideId } = req.params;
+      const { status, source } = req.body;
+      const col = source === "trips" ? TRIPS_COL : RIDES_COL;
+      await db.collection(col).doc(rideId).update({ status });
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/rides/:rideId/cancel", requireFirebaseAuth, async (req: any, res) => {
+    const { rideId } = req.params;
+    const { source } = req.body;
+    const uid = req.uid;
+
+    try {
+      const col = source === "trips" ? TRIPS_COL : RIDES_COL;
+      const rideRef = db.collection(col).doc(rideId);
+
+      await db.runTransaction(async (t) => {
+        const snap = await t.get(rideRef);
+        if (!snap.exists) throw new Error("Ride not found");
+
+        const data = snap.data()!;
+        const bookedBy = Array.isArray(data.bookedBy) ? data.bookedBy : [];
+        if (!bookedBy.includes(uid)) return;
+
+        const currentBooked = Number(data.seats_booked || 0);
+
+        t.update(rideRef, {
+          bookedBy: admin.firestore.FieldValue.arrayRemove(uid),
+          seats_booked: admin.firestore.FieldValue.increment(currentBooked > 0 ? -1 : 0)
+        });
+      });
+
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
   app.post("/api/rides/:rideId/book", requireFirebaseAuth, async (req: any, res) => {
     const { rideId } = req.params;
     const uid = req.uid;
@@ -398,9 +522,9 @@ async function startServer() {
   // --------- Transactions ---------
   app.get("/api/transactions", requireFirebaseAuth, async (req: any, res) => {
     try {
+      // Remove orderBy to avoid index requirement error
       const q = db.collection(TX_COL)
-        .where("user_id", "==", req.uid)
-        .orderBy("createdAt", "desc");
+        .where("user_id", "==", req.uid);
       
       const snap = await q.get();
       const txs = snap.docs.map(d => ({
@@ -408,8 +532,15 @@ async function startServer() {
         ...d.data(),
         created_at: d.data().createdAt?.toDate?.()?.toISOString() || new Date().toISOString()
       }));
+
+      // Sort in memory
+      txs.sort((a: any, b: any) => {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+
       res.json(txs);
     } catch (err: any) {
+      console.error("Transactions Fetch Error:", err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -776,9 +907,64 @@ async function startServer() {
     }
   });
 
+  app.delete("/api/rides/:rideId", requireFirebaseAuth, async (req: any, res) => {
+    try {
+      const { rideId } = req.params;
+      const { source } = req.query;
+      const col = source === "trips" ? TRIPS_COL : RIDES_COL;
+      
+      const snap = await db.collection(col).doc(rideId).get();
+      if (!snap.exists) return res.status(404).json({ error: "Ride not found" });
+      
+      const data = snap.data()!;
+      if (data.carOwnerId !== req.uid && data.driver_id !== req.uid) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      await db.collection(col).doc(rideId).delete();
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/bookings", requireFirebaseAuth, async (req: any, res) => {
+    try {
+      const bookingData = req.body;
+      const booking = {
+        ...bookingData,
+        passenger_id: req.uid,
+        status: "pending",
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      };
+      const ref = await db.collection("bookings").add(booking);
+      res.json({ id: ref.id, ...booking });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // API Catch-all (to prevent falling through to SPA for missing API routes)
   app.all(/^\/api\/.*/, (req, res) => {
+    console.warn(`[${new Date().toISOString()}] 404 API Route Not Found: ${req.method} ${req.url}`);
     res.status(404).json({ error: `API route ${req.method} ${req.url} not found` });
+  });
+
+  // Global error handler
+  app.use((err: any, req: any, res: any, next: any) => {
+    console.error(`[${new Date().toISOString()}] Global Error Handler:`, err);
+    if (res.headersSent) {
+      return next(err);
+    }
+    if (req.url.startsWith("/api")) {
+      res.status(500).json({ 
+        error: "Internal Server Error", 
+        message: err.message,
+        path: req.url
+      });
+    } else {
+      next(err);
+    }
   });
 
   // Vite middleware for development

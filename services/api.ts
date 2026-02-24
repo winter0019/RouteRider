@@ -1,22 +1,4 @@
 
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  arrayUnion,
-  arrayRemove,
-  Timestamp,
-  orderBy,
-  increment,
-  runTransaction,
-} from "firebase/firestore";
-
 import { db, auth } from "./firebase";
 import { Trip, TripStatus, Booking, BookingStatus } from "../types";
 
@@ -26,10 +8,10 @@ const BOOKINGS_COL = "bookings";
 const TRANSACTIONS_COL = "transactions";
 const WALLETS_COL = "wallets";
 
-const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || (typeof window !== 'undefined' ? window.location.origin : "");
+const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || "";
 
 if (typeof window !== 'undefined') {
-  console.log("API_BASE:", API_BASE);
+  console.log("API_BASE:", API_BASE || "(relative)");
 }
 
 function requireAuth() {
@@ -55,7 +37,14 @@ async function authedFetch(path: string, options: RequestInit = {}) {
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(text || `Request failed: ${res.status}`);
+    let errorMsg = text || `Request failed: ${res.status}`;
+    try {
+      const json = JSON.parse(text);
+      errorMsg = json.error || json.message || errorMsg;
+    } catch (e) {
+      // Not JSON, use text
+    }
+    throw new Error(errorMsg);
   }
   return res.json();
 }
@@ -156,15 +145,18 @@ export const api = {
   // ----------------------------
   async getTrips(): Promise<Trip[]> {
     const res = await fetch(`${API_BASE}/api/rides`);
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(text || `Failed to fetch rides: ${res.status}`);
+    }
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Failed to fetch rides");
     return data.map((d: any) => d.source === "trips" ? mapTripDocToTrip(d.id, d) : mapRideDocToTrip(d.id, d));
   },
 
   async getTrip(tripId: string, source: "rides" | "trips" = "rides"): Promise<Trip | null> {
     const res = await fetch(`${API_BASE}/api/rides/${tripId}?source=${source}`);
-    const data = await res.json();
     if (!res.ok) return null;
+    const data = await res.json();
     return source === "trips" ? mapTripDocToTrip(data.id, data) : mapRideDocToTrip(data.id, data);
   },
 
@@ -201,12 +193,7 @@ export const api = {
   },
 
   async getMyWallet() {
-    if (!db) return { balance: 0 };
-    const user = requireAuth();
-    const ref = doc(db, WALLETS_COL, user.uid);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) return { balance: 0 };
-    return snap.data() as { balance: number; balanceKobo: number };
+    return authedFetch("/wallet");
   },
 
   // ----------------------------
@@ -234,100 +221,53 @@ export const api = {
   },
 
   async cancelBooking(tripId: string, source: "rides" | "trips" = "rides"): Promise<void> {
-    if (!db || !auth?.currentUser) throw new Error("Not authenticated");
-    const uid = auth.currentUser.uid;
-
-    const col = source === "trips" ? TRIPS_COL : RIDES_COL;
-    const ref = doc(db, col, tripId);
-
-    await runTransaction(db, async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists()) throw new Error("Trip not found");
-
-      const data: any = snap.data();
-      const bookedBy: string[] = Array.isArray(data.bookedBy) ? data.bookedBy : [];
-
-      const currentBooked =
-        typeof data.seats_booked === "number" ? data.seats_booked : bookedBy.length;
-
-      if (!bookedBy.includes(uid)) return;
-
-      tx.update(ref, {
-        bookedBy: arrayRemove(uid),
-        seats_booked: increment(currentBooked > 0 ? -1 : 0),
-      });
+    return authedFetch(`/rides/${tripId}/cancel`, {
+      method: "POST",
+      body: JSON.stringify({ source }),
     });
   },
 
   async updateBookingStatus(bookingId: string, status: string) {
-    if (!db) return;
-    try {
-      const bookingRef = doc(db, BOOKINGS_COL, bookingId);
-      await updateDoc(bookingRef, { status });
-    } catch (error) {
-      console.error('Firestore Error (updateBookingStatus):', error);
-      throw error;
-    }
+    return authedFetch(`/bookings/${bookingId}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    });
   },
 
   async updateTripStatus(tripId: string, status: TripStatus, source: "rides" | "trips" = "rides") {
-    if (!db) return;
-    try {
-      const col = source === "trips" ? TRIPS_COL : RIDES_COL;
-      const tripRef = doc(db, col, tripId);
-      await updateDoc(tripRef, { status });
-    } catch (error) {
-      console.error('Firestore Error (updateTripStatus):', error);
-      throw error;
-    }
+    return authedFetch(`/rides/${tripId}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status, source }),
+    });
   },
 
   async createBooking(bookingData: any): Promise<Booking> {
-    if (!db || !auth?.currentUser) throw new Error("Not authenticated");
-
-    const booking: any = {
-      trip_id: String(bookingData.trip_id),
-      driver_id: String(bookingData.driver_id),
-      passenger_id: auth.currentUser.uid,
-      passenger_name: bookingData.passenger_name || "Passenger",
-      passenger_photo:
-        bookingData.passenger_photo ||
-        `https://picsum.photos/100/100?seed=${auth.currentUser.uid}`,
-      passenger_rating: 5.0,
-      passenger_trips: 0,
-      seats_booked: bookingData.seats_booked ?? 1,
-      amount_paid: Number(bookingData.amount_paid ?? 0),
-      status: BookingStatus.PENDING,
-      createdAt: Timestamp.now(),
-    };
-
-    const ref = await addDoc(collection(db, BOOKINGS_COL), booking);
+    const res = await authedFetch("/bookings", {
+      method: "POST",
+      body: JSON.stringify(bookingData),
+    });
 
     return {
-      booking_id: ref.id,
-      trip_id: booking.trip_id,
-      driver_id: booking.driver_id,
-      passenger_id: booking.passenger_id,
-      passenger_name: booking.passenger_name,
-      passenger_photo: booking.passenger_photo,
-      passenger_rating: booking.passenger_rating,
-      passenger_trips: booking.passenger_trips,
-      seats_booked: booking.seats_booked,
-      amount_paid: booking.amount_paid,
-      status: booking.status,
-      created_at: booking.createdAt.toDate().toISOString(),
+      booking_id: res.id,
+      trip_id: res.trip_id,
+      driver_id: res.driver_id,
+      passenger_id: res.passenger_id,
+      passenger_name: res.passenger_name,
+      passenger_photo: res.passenger_photo,
+      passenger_rating: res.passenger_rating || 5.0,
+      passenger_trips: res.passenger_trips || 0,
+      seats_booked: res.seats_booked,
+      amount_paid: res.amount_paid,
+      status: res.status,
+      created_at: toISO(res.createdAt),
     };
   },
 
   async getBookingsForTrip(tripId: string): Promise<Booking[]> {
-    if (!db) return [];
-    const q = query(collection(db, BOOKINGS_COL), where("trip_id", "==", tripId));
-    const snap = await getDocs(q);
-
-    return snap.docs.map((d) => {
-      const data: any = d.data();
+    const data = await authedFetch(`/bookings/trip/${tripId}`);
+    return data.map((data: any) => {
       return {
-        booking_id: d.id,
+        booking_id: data.booking_id || data.id,
         trip_id: data.trip_id,
         driver_id: data.driver_id,
         passenger_id: data.passenger_id,
@@ -344,14 +284,10 @@ export const api = {
   },
 
   async getBookingsForUser(userId: string): Promise<Booking[]> {
-    if (!db) return [];
-    const q = query(collection(db, BOOKINGS_COL), where("passenger_id", "==", userId));
-    const snap = await getDocs(q);
-
-    return snap.docs.map((d) => {
-      const data: any = d.data();
+    const data = await authedFetch(`/bookings/user`);
+    return data.map((data: any) => {
       return {
-        booking_id: d.id,
+        booking_id: data.booking_id || data.id,
         trip_id: data.trip_id,
         driver_id: data.driver_id,
         passenger_id: data.passenger_id,
@@ -368,9 +304,9 @@ export const api = {
   },
 
   async deleteTrip(tripId: string, source: "rides" | "trips" = "rides") {
-    if (!db || !auth?.currentUser) throw new Error("Not authenticated");
-    const col = source === "trips" ? TRIPS_COL : RIDES_COL;
-    await deleteDoc(doc(db, col, tripId));
+    return authedFetch(`/rides/${tripId}?source=${source}`, {
+      method: "DELETE",
+    });
   },
 
   async getMe() {
@@ -383,6 +319,13 @@ export const api = {
 
   async updateProfile(data: any) {
     return authedFetch("/users/profile", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async submitKYC(data: any) {
+    return authedFetch("/kyc/submit", {
       method: "POST",
       body: JSON.stringify(data),
     });
