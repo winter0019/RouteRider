@@ -1,38 +1,55 @@
 import React, { useEffect, useState } from "react";
+import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "./services/firebase";
 
 export default function AdminGuard({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [allowed, setAllowed] = useState(false);
 
   useEffect(() => {
-    const checkAdmin = async () => {
-      const u = auth?.currentUser;
-      if (!u) {
+    if (!auth) {
+      setLoading(false);
+      setAllowed(false);
+      return;
+    }
+
+    const unsub = onAuthStateChanged(auth, async (user: User | null) => {
+      if (!user) {
+        setAllowed(false);
         setLoading(false);
         return;
       }
 
       try {
-        // IMPORTANT: claims are inside the ID token
-        const token = await u.getIdTokenResult(true);
-        setIsAdmin(!!token.claims?.admin);
-      } catch (error) {
-        console.error("Error checking admin status:", error);
-        setIsAdmin(false);
+        // Claims are in the ID token result
+        const token = await user.getIdTokenResult(true);
+        const isAdmin = !!token.claims?.admin;
+
+        setAllowed(isAdmin);
+      } catch (err) {
+        console.error("AdminGuard: failed to read claims:", err);
+        setAllowed(false);
       } finally {
         setLoading(false);
       }
-    };
+    });
 
-    checkAdmin();
+    return () => unsub();
   }, []);
 
-  if (loading) return <div className="p-6 font-black text-black">Loading...</div>;
-  
-  if (!auth?.currentUser || !isAdmin) {
-    // Simple redirect
-    window.location.href = "/";
+  // Redirect only AFTER we know the answer
+  useEffect(() => {
+    if (!loading && !allowed) {
+      window.location.replace("/");
+    }
+  }, [loading, allowed]);
+
+  if (loading) {
+    return <div className="p-6 font-black text-black">Checking admin access…</div>;
+  }
+
+  if (!allowed) {
+    // Redirect effect will run; render nothing
     return null;
   }
 
