@@ -86,7 +86,7 @@ const KYC_COL = "kyc_submissions";
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT || 3000;
+  const PORT = 3000;
 
   try {
     db = admin.firestore();
@@ -98,7 +98,16 @@ async function startServer() {
   console.log(`[${new Date().toISOString()}] Environment: ${process.env.NODE_ENV || "development"}`);
   console.log(`[${new Date().toISOString()}] Port: ${PORT}`);
 
-  app.use(cors());
+  app.use(cors({
+    origin: true,
+    credentials: true
+  }));
+
+  // Request logging (moved to top)
+  app.use((req, _res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    next();
+  });
 
   // Middleware to check if Firebase is initialized
   app.use((req, res, next) => {
@@ -432,13 +441,6 @@ app.post("/api/paystack/verify", requireFirebaseAuth, async (req: any, res) => {
 });
 
   
-  // Request logging
-  app.use((req, _res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-    next();
-  });
-
-  // ------------------------------------------------------
   // Auth middleware (Firebase ID token)
   // ------------------------------------------------------
   async function requireFirebaseAuth(req: any, res: any, next: any) {

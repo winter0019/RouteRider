@@ -8,7 +8,19 @@ const BOOKINGS_COL = "bookings";
 const TRANSACTIONS_COL = "transactions";
 const WALLETS_COL = "wallets";
 
-const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL || "";
+const getApiBase = () => {
+  const envBase = (import.meta as any).env?.VITE_API_BASE_URL || "";
+  if (typeof window !== 'undefined') {
+    // In the AI Studio preview environment, we should prefer the current origin
+    // to avoid Mixed Content errors or connection issues with localhost.
+    if (!envBase || envBase.includes('localhost')) {
+      return window.location.origin;
+    }
+  }
+  return envBase;
+};
+
+const API_BASE = getApiBase();
 
 if (typeof window !== 'undefined') {
   console.log("API_BASE:", API_BASE || "(relative)");
