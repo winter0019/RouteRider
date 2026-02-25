@@ -209,6 +209,12 @@ const MainApp: React.FC = () => {
   // Initial load + sync
   // -------------------------
   useEffect(() => {
+    // Debug: Check server health
+    fetch("/api/health", { mode: 'same-origin' })
+      .then(r => r.json())
+      .then(d => console.log("Server Health:", d))
+      .catch(e => console.error("Server Health Check Failed:", e));
+
     // 1. Try loading from localStorage first (fastest)
     const savedProfile = localStorage.getItem("rr_profile");
     const savedRole = localStorage.getItem("rr_role") as UserRole | null;

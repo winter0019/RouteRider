@@ -8,22 +8,8 @@ const BOOKINGS_COL = "bookings";
 const TRANSACTIONS_COL = "transactions";
 const WALLETS_COL = "wallets";
 
-const getApiBase = () => {
-  const envBase = (import.meta as any).env?.VITE_API_BASE_URL || "";
-  if (typeof window !== 'undefined') {
-    // In the AI Studio preview environment, we should prefer the current origin
-    // to avoid Mixed Content errors or connection issues with localhost.
-    if (!envBase || envBase.includes('localhost')) {
-      return window.location.origin;
-    }
-  }
-  return envBase;
-};
-
-const API_BASE = getApiBase();
-
 if (typeof window !== 'undefined') {
-  console.log("API_BASE:", API_BASE || "(relative)");
+  console.log("API Service Initialized (relative paths)");
 }
 
 function requireAuth() {
@@ -33,8 +19,7 @@ function requireAuth() {
 
 async function authedFetch(path: string, options: RequestInit = {}) {
   const user = requireAuth();
-  // Force refresh token to ensure it's valid for the backend
-  const token = await user.getIdToken(true);
+  const token = await user.getIdToken();
 
   const headers = {
     "Content-Type": "application/json",
@@ -42,9 +27,12 @@ async function authedFetch(path: string, options: RequestInit = {}) {
     Authorization: `Bearer ${token}`,
   };
 
-  const res = await fetch(`${API_BASE}/api${path}`, {
+  const url = `/api${path}`;
+
+  const res = await fetch(url, {
     ...options,
     headers,
+    mode: 'same-origin'
   });
 
   if (!res.ok) {
@@ -156,7 +144,7 @@ export const api = {
   // TRIPS
   // ----------------------------
   async getTrips(): Promise<Trip[]> {
-    const res = await fetch(`${API_BASE}/api/rides`);
+    const res = await fetch("/api/rides", { mode: 'same-origin' });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       throw new Error(text || `Failed to fetch rides: ${res.status}`);
@@ -166,7 +154,7 @@ export const api = {
   },
 
   async getTrip(tripId: string, source: "rides" | "trips" = "rides"): Promise<Trip | null> {
-    const res = await fetch(`${API_BASE}/api/rides/${tripId}?source=${source}`);
+    const res = await fetch(`/api/rides/${tripId}?source=${source}`, { mode: 'same-origin' });
     if (!res.ok) return null;
     const data = await res.json();
     return source === "trips" ? mapTripDocToTrip(data.id, data) : mapRideDocToTrip(data.id, data);

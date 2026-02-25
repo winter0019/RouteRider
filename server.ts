@@ -100,7 +100,9 @@ async function startServer() {
 
   app.use(cors({
     origin: true,
-    credentials: true
+    credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
   }));
 
   // Request logging (moved to top)
