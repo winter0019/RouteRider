@@ -9,9 +9,10 @@ interface DashboardProps {
   activeTrip: Trip | null;
   bookings: Booking[];
   onNavigate: (page: any) => void;
+  onCompleteTrip: (tripId: string) => Promise<void>;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ profile, activeTrip, bookings, onNavigate }) => {
+const Dashboard: React.FC<DashboardProps> = ({ profile, activeTrip, bookings, onNavigate, onCompleteTrip }) => {
   const [insight, setInsight] = useState<string>("Calculating your daily impact...");
 
   useEffect(() => {
@@ -120,6 +121,19 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, activeTrip, bookings, on
                 )}
               </div>
             </div>
+
+            {activeTrip.status !== TripStatus.COMPLETED && (
+              <button
+                onClick={() => {
+                  if (confirm("Are you sure you want to complete this trip? This will release all escrowed payments to your wallet.")) {
+                    onCompleteTrip(activeTrip.trip_id);
+                  }
+                }}
+                className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black text-sm shadow-lg shadow-emerald-100 active:scale-95 transition-all"
+              >
+                Complete Trip & Release Funds
+              </button>
+            )}
           </div>
         ) : (
           <div className="bg-slate-50 border-2 border-dashed border-slate-200 p-8 rounded-3xl flex flex-col items-center justify-center text-center space-y-4">

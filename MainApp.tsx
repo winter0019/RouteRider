@@ -161,20 +161,47 @@ const MainApp: React.FC = () => {
     }
   }, [profile?.user_id]);
 
-  const handleTransaction = async (txData: { type: 'deposit' | 'withdrawal'; amount: number; description: string }) => {
+  const refreshWalletFromBackend = useCallback(async () => {
+    if (!profile?.user_id) return;
     try {
-      const newTx = await api.createTransaction(txData);
-      persistTransactions([newTx, ...transactions]);
-      
-      // Refresh profile to get new balance
-      const updatedProfile = await api.getProfile(profile!.user_id);
-      if (updatedProfile) {
-        setProfile(updatedProfile as any);
+      const wallet = await api.getMyWallet();
+      if (wallet && typeof wallet.balance === 'number') {
+        const updatedProfile = { ...profile, wallet_balance: wallet.balance };
+        setProfile(updatedProfile);
         localStorage.setItem("rr_profile", JSON.stringify(updatedProfile));
       }
     } catch (error) {
+      console.error("Failed to refresh wallet:", error);
+    }
+  }, [profile]);
+
+  const handleTransaction = async (txData: { type: 'deposit' | 'withdrawal'; amount: number; description: string }) => {
+    try {
+      if (txData.description === 'Refresh') {
+        await refreshWalletFromBackend();
+        return;
+      }
+      const newTx = await api.createTransaction(txData);
+      persistTransactions([newTx, ...transactions]);
+      await refreshWalletFromBackend();
+    } catch (error) {
       console.error("Transaction failed:", error);
       throw error;
+    }
+  };
+
+  const handleCompleteTrip = async (tripId: string) => {
+    try {
+      await api.completeTrip(tripId);
+      await Promise.all([
+        refreshTripsFromBackend(),
+        refreshWalletFromBackend(),
+        refreshBookingsFromBackend()
+      ]);
+      alert("Trip completed and earnings released!");
+    } catch (error: any) {
+      console.error("Failed to complete trip:", error);
+      alert(error.message || "Failed to complete trip");
     }
   };
 
@@ -279,8 +306,16 @@ const MainApp: React.FC = () => {
   useEffect(() => {
     if (isLoggedIn && currentPage === 'wallet') {
       refreshTransactionsFromBackend();
+      refreshWalletFromBackend();
     }
-  }, [isLoggedIn, currentPage, refreshTransactionsFromBackend]);
+  }, [isLoggedIn, currentPage, refreshTransactionsFromBackend, refreshWalletFromBackend]);
+
+  // Sync wallet on dashboard
+  useEffect(() => {
+    if (isLoggedIn && currentPage === 'dashboard') {
+      refreshWalletFromBackend();
+    }
+  }, [isLoggedIn, currentPage, refreshWalletFromBackend]);
 
   // optional: refresh when tab becomes active
   useEffect(() => {
@@ -443,6 +478,7 @@ const MainApp: React.FC = () => {
             activeTrip={activeTrip}
             bookings={bookings}
             onNavigate={setCurrentPage}
+            onCompleteTrip={handleCompleteTrip}
           />
         );
       case "post-trip":

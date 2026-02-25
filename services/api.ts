@@ -352,4 +352,8 @@ export const api = {
   async getTransactions(userId: string) {
     return authedFetch("/transactions", { method: "GET" });
   },
+
+  async completeTrip(tripId: string) {
+    return authedFetch(`/trips/${tripId}/complete`, { method: "POST" });
+  },
 };
