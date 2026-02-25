@@ -58,9 +58,13 @@ try {
       });
     } else {
       console.log("Initializing Firebase Admin with default credentials...");
-      admin.initializeApp();
+      try {
+        admin.initializeApp();
+      } catch (e) {
+        console.error("Default Firebase Admin initialization failed. This is expected if no credentials are provided in the environment.");
+      }
     }
-    console.log("Firebase Admin initialized successfully");
+    console.log("Firebase Admin initialization attempt completed");
   }
 } catch (error) {
   console.error("Firebase Admin initialization error:", error);
@@ -86,7 +90,9 @@ const KYC_COL = "kyc_submissions";
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  // Use process.env.PORT for production portability (e.g. Railway), 
+  // but default to 3000 for AI Studio environment.
+  const PORT = Number(process.env.PORT) || 3000;
 
   try {
     db = admin.firestore();
