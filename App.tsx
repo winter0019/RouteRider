@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import AdminGuard from "./AdminGuard";
 import AdminDashboard from "./pages/AdminDashboard";
 import MainApp from "./MainApp";
+import AdPopup from "./components/AdPopup";
 
 const App: React.FC = () => {
   const [path, setPath] = useState(window.location.pathname);
@@ -20,15 +21,18 @@ const App: React.FC = () => {
     };
   }, []);
 
-  if (path === "/admin") {
-    return (
-      <AdminGuard>
-        <AdminDashboard />
-      </AdminGuard>
-    );
-  }
-
-  return <MainApp />;
+  return (
+    <>
+      {path === "/admin" ? (
+        <AdminGuard>
+          <AdminDashboard />
+        </AdminGuard>
+      ) : (
+        <MainApp />
+      )}
+      <AdPopup />
+    </>
+  );
 };
 
 export default App;

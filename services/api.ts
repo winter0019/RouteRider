@@ -19,7 +19,8 @@ function requireAuth() {
 
 async function authedFetch(path: string, options: RequestInit = {}) {
   const user = requireAuth();
-  const token = await user.getIdToken();
+  // Force refresh token to ensure it's valid for the backend
+  const token = await user.getIdToken(true);
 
   const headers = {
     "Content-Type": "application/json",

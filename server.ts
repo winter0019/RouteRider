@@ -48,23 +48,59 @@ try {
       process.env.FIREBASE_CLIENT_EMAIL &&
       process.env.FIREBASE_PRIVATE_KEY
     ) {
-      console.log("Initializing Firebase Admin with explicit credentials...");
+      let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+      
+      // Handle cases where the key might be wrapped in quotes
+      if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
+        privateKey = privateKey.substring(1, privateKey.length - 1);
+      }
+
+      // Check if it's base64 encoded (doesn't contain PEM headers and looks like base64)
+      if (!privateKey.includes("-----BEGIN") && /^[A-Za-z0-9+/=]+$/.test(privateKey.replace(/\s/g, ""))) {
+        console.log("Detected potentially base64 encoded FIREBASE_PRIVATE_KEY. Decoding...");
+        try {
+          privateKey = Buffer.from(privateKey, 'base64').toString('utf-8');
+        } catch (e) {
+          console.error("Failed to decode base64 private key:", e);
+        }
+      }
+
+      // Ensure newlines and carriage returns are correctly handled
+      privateKey = privateKey.replace(/\\n/g, "\n").replace(/\\r/g, "\r");
+
+      // Debugging info (safe)
+      console.log("Private Key Debug Info:");
+      console.log("- Length:", privateKey.length);
+      console.log("- Starts with '-----BEGIN PRIVATE KEY-----':", privateKey.trim().startsWith("-----BEGIN PRIVATE KEY-----"));
+      console.log("- Ends with '-----END PRIVATE KEY-----':", privateKey.trim().endsWith("-----END PRIVATE KEY-----"));
+      console.log("- Contains actual newlines:", privateKey.includes("\n"));
+
+      console.log("Initializing Firebase Admin with explicit credentials for project:", process.env.FIREBASE_PROJECT_ID);
       admin.initializeApp({
         credential: admin.credential.cert({
           projectId: process.env.FIREBASE_PROJECT_ID,
           clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-          privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+          privateKey: privateKey,
         }),
       });
     } else {
       console.log("Initializing Firebase Admin with default credentials...");
       try {
-        admin.initializeApp();
+        // If we have a project ID but no cert, try to set it in the options
+        // This can help with the 'aud' claim mismatch in some environments
+        admin.initializeApp({
+          projectId: process.env.FIREBASE_PROJECT_ID || undefined
+        });
       } catch (e) {
-        console.error("Default Firebase Admin initialization failed. This is expected if no credentials are provided in the environment.");
+        console.error("Default Firebase Admin initialization failed:", e);
       }
     }
-    console.log("Firebase Admin initialization attempt completed");
+    const currentProjectId = admin.app().options.projectId;
+    console.log("Firebase Admin initialized. Project ID:", currentProjectId);
+    
+    if (currentProjectId !== "my-route-rider") {
+      console.warn(`WARNING: Firebase Project ID mismatch! Server is using "${currentProjectId}" but client expects "my-route-rider". Auth verification will fail.`);
+    }
   }
 } catch (error) {
   console.error("Firebase Admin initialization error:", error);
@@ -95,7 +131,21 @@ async function startServer() {
   const PORT = Number(process.env.PORT) || 3000;
 
   try {
+    if (!admin.apps.length) {
+      throw new Error("Firebase Admin not initialized");
+    }
     db = admin.firestore();
+    console.log("Firestore initialized. Project:", admin.app().options.projectId);
+    
+    // Perform a quick connectivity check
+    db.listCollections().then(() => {
+      console.log("✅ Firestore connectivity verified.");
+    }).catch(err => {
+      console.error("❌ Firestore connectivity check failed:", err.message);
+      if (err.message.includes('DECODER')) {
+        console.error("TIP: Your FIREBASE_PRIVATE_KEY format is likely invalid for Node.js. Ensure it is a valid PEM string starting with '-----BEGIN PRIVATE KEY-----'.");
+      }
+    });
   } catch (err) {
     console.error("Failed to get Firestore instance:", err);
   }
@@ -451,18 +501,33 @@ app.post("/api/paystack/verify", requireFirebaseAuth, async (req: any, res) => {
   
   // Auth middleware (Firebase ID token)
   // ------------------------------------------------------
-  async function requireFirebaseAuth(req: any, res: any, next: any) {
+async function requireFirebaseAuth(req: any, res: any, next: any) {
     try {
       const header = req.headers.authorization || "";
       const token = header.startsWith("Bearer ") ? header.slice(7) : null;
       if (!token) return res.status(401).json({ error: "Missing auth token" });
+
+      if (process.env.NODE_ENV !== 'production') {
+        console.log("Verifying token starting with:", token.substring(0, 10) + "...");
+      }
 
       const decoded = await admin.auth().verifyIdToken(token);
       req.uid = decoded.uid;
       req.user = decoded;
       next();
     } catch (e: any) {
-      return res.status(401).json({ error: "Invalid auth token", detail: e.message });
+      console.error("Auth Verification Error:", e.message, e.code);
+      
+      let errorMessage = "Invalid auth token";
+      if (e.code === 'auth/argument-error' && e.message.includes('audience')) {
+        errorMessage = "Firebase Project ID Mismatch. Please ensure FIREBASE_PROJECT_ID is set to 'my-route-rider' in the environment variables.";
+      }
+
+      return res.status(401).json({ 
+        error: errorMessage, 
+        detail: e.message,
+        code: e.code 
+      });
     }
   }
 
