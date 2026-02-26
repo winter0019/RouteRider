@@ -55,13 +55,27 @@ const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bo
     if (!amount || isNaN(Number(amount))) return;
     
     const numAmount = Number(amount);
-    if (showModal === 'withdraw' && numAmount < 5000) {
-      alert("Minimum withdrawal is ₦5,000");
+    
+    // Validation for both Deposit and Withdrawal
+    if (numAmount > 100000) {
+      alert("Maximum transaction amount is ₦100,000");
       return;
     }
-    if (showModal === 'withdraw' && numAmount > profile.wallet_balance) {
-      alert("Insufficient balance");
+
+    if (showModal === 'deposit' && numAmount < 50) {
+      alert("Minimum deposit is ₦50");
       return;
+    }
+
+    if (showModal === 'withdraw') {
+      if (numAmount < 50) {
+        alert("Minimum withdrawal is ₦50");
+        return;
+      }
+      if (numAmount > profile.wallet_balance) {
+        alert("Insufficient balance");
+        return;
+      }
     }
 
     setIsProcessing(true);
@@ -304,8 +318,8 @@ const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bo
         <div className="text-amber-600 shrink-0">{ICONS.Alert}</div>
         <p className="text-[11px] text-amber-800 leading-relaxed font-bold">
           {isDriver 
-            ? 'Withdrawals are processed instantly to your linked bank account. Minimum withdrawal is ₦5,000.' 
-            : 'Escrow payments are automatically released to the car owner 2 hours after the scheduled departure unless you report an issue.'}
+            ? 'Withdrawals are processed instantly to your linked bank account. Min: ₦50 | Max: ₦100,000.' 
+            : 'Escrow payments are released 2 hours after departure. Deposit Min: ₦50 | Max: ₦100,000.'}
         </p>
       </div>
     </div>

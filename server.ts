@@ -50,10 +50,23 @@ try {
     ) {
       let privateKey = process.env.FIREBASE_PRIVATE_KEY;
       
-      // Handle cases where the key might be wrapped in quotes
-      if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
-        privateKey = privateKey.substring(1, privateKey.length - 1);
+      // Handle cases where the entire JSON might have been pasted
+      if (privateKey.trim().startsWith('{')) {
+        try {
+          const parsed = JSON.parse(privateKey);
+          if (parsed.private_key) {
+            console.log("Detected JSON service account in FIREBASE_PRIVATE_KEY. Extracting private_key...");
+            privateKey = parsed.private_key;
+          }
+        } catch (e) {
+          // Not valid JSON, continue with raw string
+        }
       }
+
+      // More robust cleaning
+      privateKey = privateKey.trim();
+      if (privateKey.startsWith('"') && privateKey.endsWith('"')) privateKey = privateKey.slice(1, -1);
+      if (privateKey.startsWith("'") && privateKey.endsWith("'")) privateKey = privateKey.slice(1, -1);
 
       // Check if it's base64 encoded (doesn't contain PEM headers and looks like base64)
       if (!privateKey.includes("-----BEGIN") && /^[A-Za-z0-9+/=]+$/.test(privateKey.replace(/\s/g, ""))) {
@@ -67,6 +80,15 @@ try {
 
       // Ensure newlines and carriage returns are correctly handled
       privateKey = privateKey.replace(/\\n/g, "\n").replace(/\\r/g, "\r");
+      
+      // Final trim
+      privateKey = privateKey.trim();
+
+      // Ensure it has the correct PEM headers if it looks like a raw key
+      if (!privateKey.includes("-----BEGIN")) {
+        console.log("FIREBASE_PRIVATE_KEY missing headers. Adding them...");
+        privateKey = `-----BEGIN PRIVATE KEY-----\n${privateKey}\n-----END PRIVATE KEY-----`;
+      }
 
       // Debugging info (safe)
       console.log("Private Key Debug Info:");
