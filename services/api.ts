@@ -19,8 +19,8 @@ function requireAuth() {
 
 async function authedFetch(path: string, options: RequestInit = {}) {
   const user = requireAuth();
-  // Force refresh token to ensure it's valid for the backend
-  const token = await user.getIdToken(true);
+  // Don't force refresh token unless necessary. Firebase SDK handles rotation.
+  const token = await user.getIdToken();
 
   const headers = {
     "Content-Type": "application/json",
@@ -45,6 +45,12 @@ async function authedFetch(path: string, options: RequestInit = {}) {
     } catch (e) {
       // Not JSON, use text
     }
+
+    if (errorMsg.includes("quota-exceeded") || errorMsg.includes("auth/quota-exceeded")) {
+      console.error("CRITICAL: Firebase Auth Quota Exceeded. Please wait for reset.");
+      // You might want to trigger a global state update here if possible
+    }
+
     throw new Error(errorMsg);
   }
   return res.json();

@@ -199,8 +199,13 @@ const MainApp: React.FC = () => {
         setProfile(p);
         localStorage.setItem("rr_profile", JSON.stringify(p));
       }
-    } catch (error) {
-      console.error("Failed to refresh profile:", error);
+    } catch (error: any) {
+      if (error.message === "Profile not found") {
+        console.log("Profile not found during refresh, logging out.");
+        handleLogout();
+      } else {
+        console.error("Failed to refresh profile:", error);
+      }
     }
   }, [profile]);
 
@@ -259,8 +264,10 @@ const MainApp: React.FC = () => {
       setUserRole(savedRole);
       setIsLoggedIn(true);
       if (savedRole === "passenger") setCurrentPage("search");
-      refreshTripsFromBackend();
     }
+    
+    // Always refresh trips on mount (it's a public API, doesn't burn quota)
+    refreshTripsFromBackend();
 
     if (savedTrips) setAllAvailableTrips(JSON.parse(savedTrips));
     if (savedActiveTrip) setActiveTrip(JSON.parse(savedActiveTrip));
@@ -272,38 +279,49 @@ const MainApp: React.FC = () => {
   useEffect(() => {
     const unsubscribe = auth?.onAuthStateChanged(async (user) => {
       if (user) {
-        try {
-          const firestoreProfile = await firestoreService.getUserProfile(user.uid);
-          if (firestoreProfile) {
-            const p: DriverProfile = {
-              user_id: user.uid,
-              full_name: firestoreProfile.full_name,
-              phone_number: firestoreProfile.phone_number || firestoreProfile.phone || 'N/A',
-              car_make: firestoreProfile.car_make || 'N/A',
-              car_model: firestoreProfile.car_model || 'N/A',
-              car_color: firestoreProfile.car_color || 'Standard',
-              plate_number: firestoreProfile.plate_number || 'N/A',
-              verification_status: firestoreProfile.verification_status || { phone: true, id: true, first_trip: false },
-              rating: firestoreProfile.rating || 5.0,
-              trip_count: firestoreProfile.trip_count || 0,
-              wallet_balance: firestoreProfile.wallet_balance || 0,
-              total_earnings: firestoreProfile.total_earnings || 0,
-              profile_photo_url: firestoreProfile.profile_photo_url
-            };
-            const role = (firestoreProfile.userType || 'passenger') as UserRole;
-            
-            setProfile(p);
-            setUserRole(role);
-            setIsLoggedIn(true);
-            
-            localStorage.setItem("rr_profile", JSON.stringify(p));
-            localStorage.setItem("rr_role", role);
-            
-            if (role === "passenger") setCurrentPage("search");
-            refreshTripsFromBackend();
+        // Only fetch if we don't have a profile or it's a different user
+        if (!profile || profile.user_id !== user.uid) {
+          try {
+            const firestoreProfile = await firestoreService.getUserProfile(user.uid);
+            if (firestoreProfile) {
+              const p: DriverProfile = {
+                user_id: user.uid,
+                full_name: firestoreProfile.full_name,
+                phone_number: firestoreProfile.phone_number || firestoreProfile.phone || 'N/A',
+                car_make: firestoreProfile.car_make || 'N/A',
+                car_model: firestoreProfile.car_model || 'N/A',
+                car_color: firestoreProfile.car_color || 'Standard',
+                plate_number: firestoreProfile.plate_number || 'N/A',
+                verification_status: firestoreProfile.verification_status || { phone: true, id: true, first_trip: false },
+                rating: firestoreProfile.rating || 5.0,
+                trip_count: firestoreProfile.trip_count || 0,
+                wallet_balance: firestoreProfile.wallet_balance || 0,
+                total_earnings: firestoreProfile.total_earnings || 0,
+                profile_photo_url: firestoreProfile.profile_photo_url
+              };
+              const role = (firestoreProfile.userType || 'passenger') as UserRole;
+              
+              setProfile(p);
+              setUserRole(role);
+              setIsLoggedIn(true);
+              
+              localStorage.setItem("rr_profile", JSON.stringify(p));
+              localStorage.setItem("rr_role", role);
+              
+              if (role === "passenger" && currentPage === "dashboard") setCurrentPage("search");
+            }
+          } catch (error: any) {
+            if (error.message === "Profile not found") {
+              // This is expected for new users or if the profile was deleted.
+              // If we had a saved profile, it's now stale, so clear it.
+              if (isLoggedIn) {
+                console.log("Profile not found in Firestore, clearing stale session.");
+                handleLogout();
+              }
+            } else {
+              console.error("Error fetching profile from Firestore:", error);
+            }
           }
-        } catch (error) {
-          console.error("Error fetching profile from Firestore:", error);
         }
       } else {
         setIsLoggedIn(prev => {
@@ -323,16 +341,16 @@ const MainApp: React.FC = () => {
   useEffect(() => {
     if (userRole === 'driver' && activeTrip && isLoggedIn) {
       refreshBookingsFromBackend();
-      const interval = setInterval(refreshBookingsFromBackend, 10000); // Poll every 10s
+      const interval = setInterval(refreshBookingsFromBackend, 30000); // Poll every 30s instead of 10s
       return () => clearInterval(interval);
     }
-  }, [userRole, activeTrip, isLoggedIn, refreshBookingsFromBackend]);
+  }, [userRole, !!activeTrip, isLoggedIn, refreshBookingsFromBackend]);
 
   // Sync bookings for passenger
   useEffect(() => {
     if (userRole === 'passenger' && isLoggedIn) {
       refreshUserBookingsFromBackend();
-      const interval = setInterval(refreshUserBookingsFromBackend, 10000); // Poll every 10s
+      const interval = setInterval(refreshUserBookingsFromBackend, 30000); // Poll every 30s instead of 10s
       return () => clearInterval(interval);
     }
   }, [userRole, isLoggedIn, refreshUserBookingsFromBackend]);
@@ -352,10 +370,13 @@ const MainApp: React.FC = () => {
     }
   }, [isLoggedIn, currentPage, refreshWalletFromBackend]);
 
-  // optional: refresh when tab becomes active
+  // optional: refresh when tab becomes active (throttled)
   useEffect(() => {
+    let lastRefresh = 0;
     const onFocus = () => {
-      if (isLoggedIn) {
+      const now = Date.now();
+      if (isLoggedIn && now - lastRefresh > 60000) { // Only refresh if last refresh was > 1 min ago
+        lastRefresh = now;
         refreshTripsFromBackend();
         refreshTransactionsFromBackend();
         if (userRole === 'driver') {

@@ -81,19 +81,29 @@ try {
       // Ensure newlines and carriage returns are correctly handled
       privateKey = privateKey.replace(/\\n/g, "\n").replace(/\\r/g, "\r");
       
-      // Final trim
-      privateKey = privateKey.trim();
+      // Robust PEM normalization
+      const normalizePEM = (key: string) => {
+        // Remove all whitespace and any existing headers/footers to isolate the base64 body
+        const body = key
+          .replace(/-----BEGIN [^-]+-----/g, "")
+          .replace(/-----END [^-]+-----/g, "")
+          .replace(/\s/g, "");
+        
+        if (!body) return key; // Fallback if something went wrong
 
-      // Ensure it has the correct PEM headers if it looks like a raw key
-      if (!privateKey.includes("-----BEGIN")) {
-        console.log("FIREBASE_PRIVATE_KEY missing headers. Adding them...");
-        privateKey = `-----BEGIN PRIVATE KEY-----\n${privateKey}\n-----END PRIVATE KEY-----`;
-      }
+        // Re-wrap with standard PKCS#8 headers and 64-character line breaks
+        const lines = body.match(/.{1,64}/g);
+        if (!lines) return key;
+        
+        return `-----BEGIN PRIVATE KEY-----\n${lines.join("\n")}\n-----END PRIVATE KEY-----\n`;
+      };
+
+      privateKey = normalizePEM(privateKey);
 
       // Debugging info (safe)
       console.log("Private Key Debug Info:");
       console.log("- Length:", privateKey.length);
-      console.log("- Starts with '-----BEGIN PRIVATE KEY-----':", privateKey.trim().startsWith("-----BEGIN PRIVATE KEY-----"));
+      console.log("- Starts with '-----BEGIN PRIVATE KEY-----':", privateKey.startsWith("-----BEGIN PRIVATE KEY-----"));
       console.log("- Ends with '-----END PRIVATE KEY-----':", privateKey.trim().endsWith("-----END PRIVATE KEY-----"));
       console.log("- Contains actual newlines:", privateKey.includes("\n"));
 
