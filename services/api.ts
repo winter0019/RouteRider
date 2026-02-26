@@ -354,6 +354,20 @@ export const api = {
     return authedFetch("/transactions", { method: "GET" });
   },
 
+  async verifyBankAccount(params: { bank_code: string; account_number: string }) {
+    return authedFetch("/wallet/verify-account", {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
+  },
+
+  async saveBankDetails(params: { bank_name: string; bank_code: string; account_number: string; account_name: string }) {
+    return authedFetch("/wallet/save-bank", {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
+  },
+
   async completeTrip(tripId: string) {
     return authedFetch(`/trips/${tripId}/complete`, { method: "POST" });
   },

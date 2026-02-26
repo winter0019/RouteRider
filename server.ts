@@ -335,7 +335,59 @@ async function startServer() {
       console.error("Webhook Error:", err);
       return res.status(500).send("Webhook processing failed");
     }
+
+    // 2) TRANSFER STATUS (driver payout)
+    if (event?.event === "transfer.success" || event?.event === "transfer.failed" || event?.event === "transfer.reversed") {
+      await handleTransferStatus({
+        reference: event?.data?.reference,
+        transferCode: event?.data?.transfer_code,
+        status: event?.data?.status,
+        event: event?.event,
+      });
+    }
+
+    return res.sendStatus(200);
   });
+
+async function handleTransferStatus(params: { reference: string; transferCode: string; status: string; event: string }) {
+  const { reference, transferCode, status } = params;
+  console.log(`[Paystack Webhook] Transfer Status: ${status} for ref ${reference}`);
+
+  const txSnap = await db.collection(TX_COL).where("reference", "==", reference).limit(1).get();
+  if (txSnap.empty) {
+    console.warn(`Transfer transaction not found for ref: ${reference}`);
+    return;
+  }
+
+  const txDoc = txSnap.docs[0];
+  const txData: any = txDoc.data();
+
+  if (status === "success") {
+    await txDoc.ref.update({ status: "success", updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+  } else if (status === "failed" || status === "reversed") {
+    await db.runTransaction(async (t) => {
+      const walletRef = db.collection(WALLETS_COL).doc(txData.uid);
+      const userRef = db.collection(USERS_COL).doc(txData.uid);
+      
+      t.set(walletRef, {
+        balanceKobo: admin.firestore.FieldValue.increment(txData.amountKobo),
+        balance: admin.firestore.FieldValue.increment(txData.amount),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+      
+      t.set(userRef, {
+        wallet_balance: admin.firestore.FieldValue.increment(txData.amount),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      t.update(txDoc.ref, { 
+        status: "failed", 
+        description: `Withdrawal Failed: ${status}`,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp() 
+      });
+    });
+  }
+}
 
   // JSON body parser (after webhook)
   app.use(express.json({ limit: "10mb" }));
@@ -1536,7 +1588,99 @@ app.post("/api/trips/:tripId/complete", requireFirebaseAuth, async (req: any, re
   });
 
   // ------------------------------------------------------
-  // Withdrawal
+  // Bank Account & Payouts (Paystack Transfers)
+  // ------------------------------------------------------
+  app.post("/api/wallet/verify-account", requireFirebaseAuth, async (req: any, res) => {
+    const { bank_code, account_number } = req.body;
+    if (!bank_code || !account_number) return res.status(400).json({ error: "bank_code and account_number required" });
+
+    try {
+      const response = await fetch(
+        `https://api.paystack.co/bank/resolve?account_number=${account_number}&bank_code=${bank_code}`,
+        {
+          headers: {
+            Authorization: `Bearer ${PAYSTACK_SECRET}`,
+          },
+        }
+      );
+
+      const data = await response.json();
+      if (data.status) {
+        res.json({ success: true, account_name: data.data.account_name });
+      } else {
+        res.status(400).json({ success: false, message: data.message || "Invalid account" });
+      }
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  app.post("/api/wallet/save-bank", requireFirebaseAuth, async (req: any, res) => {
+    const { bank_name, bank_code, account_number, account_name } = req.body;
+    if (!bank_name || !bank_code || !account_number || !account_name) {
+      return res.status(400).json({ error: "All bank details required" });
+    }
+
+    try {
+      // Create transfer recipient in Paystack
+      const paystackResponse = await fetch("https://api.paystack.co/transferrecipient", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${PAYSTACK_SECRET}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          type: "nuban",
+          name: account_name,
+          account_number: account_number,
+          bank_code: bank_code,
+          currency: "NGN",
+        }),
+      });
+
+      const paystackData = await paystackResponse.json();
+      if (!paystackData.status) {
+        return res.status(400).json({ success: false, message: paystackData.message });
+      }
+
+      const recipient_code = paystackData.data.recipient_code;
+
+      // Save to user profile
+      await db.collection(USERS_COL).doc(req.uid).set(
+        {
+          bank_details: {
+            bank_name,
+            bank_code,
+            account_number,
+            account_name,
+            recipient_code,
+          },
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      res.json({ success: true, recipient_code });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  app.get("/api/wallet/balance/:uid", requireFirebaseAuth, async (req: any, res) => {
+    const { uid } = req.params;
+    if (uid !== req.uid) return res.status(403).send("Unauthorized");
+
+    try {
+      const snap = await db.collection(WALLETS_COL).doc(uid).get();
+      const balance = snap.exists ? Number(snap.data()?.balance || 0) : 0;
+      res.json({ balance });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ------------------------------------------------------
+  // Withdrawal (Real Paystack Transfer)
   // ------------------------------------------------------
   app.post("/api/wallet/withdraw", requireFirebaseAuth, async (req: any, res) => {
     const { amountKobo } = req.body || {};
@@ -1546,6 +1690,17 @@ app.post("/api/trips/:tripId/complete", requireFirebaseAuth, async (req: any, re
     const amountNaira = Number(amountKobo) / 100;
 
     try {
+      // 1) Get driver's recipient_code
+      const userSnap = await db.collection(USERS_COL).doc(uid).get();
+      const user: any = userSnap.data();
+      const recipient_code = user?.bank_details?.recipient_code;
+
+      if (!recipient_code) {
+        return res.status(400).json({ error: "Bank account not linked. Please link your bank account first." });
+      }
+
+      const reference = `wd_${Date.now()}_${uid.slice(0, 6)}`;
+
       await db.runTransaction(async (t) => {
         const walletRef = db.collection(WALLETS_COL).doc(uid);
         const userRef = db.collection(USERS_COL).doc(uid);
@@ -1554,6 +1709,28 @@ app.post("/api/trips/:tripId/complete", requireFirebaseAuth, async (req: any, re
 
         if (currentKobo < amountKobo) throw new Error("Insufficient balance");
 
+        // 2) Initiate Paystack transfer
+        const transferResponse = await fetch("https://api.paystack.co/transfer", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${PAYSTACK_SECRET}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            source: "balance",
+            amount: amountKobo,
+            recipient: recipient_code,
+            reason: "RouteRider driver payout",
+            reference,
+          }),
+        });
+
+        const transferData = await transferResponse.json();
+        if (!transferData.status) {
+          throw new Error(transferData.message || "Paystack transfer initiation failed");
+        }
+
+        // 3) Deduct from wallet balance
         const newBalanceKobo = currentKobo - amountKobo;
         const newBalanceNaira = newBalanceKobo / 100;
 
@@ -1567,21 +1744,24 @@ app.post("/api/trips/:tripId/complete", requireFirebaseAuth, async (req: any, re
           wallet_balance: newBalanceNaira
         });
 
-        const ref = `wd_${Date.now()}_${uid.slice(0, 6)}`;
-        t.set(db.collection(TX_COL).doc(ref), {
+        // 4) Record withdrawal transaction (pending)
+        t.set(db.collection(TX_COL).doc(reference), {
           uid,
           user_id: uid,
           type: "withdrawal",
           amount: amountNaira,
           amountKobo: Number(amountKobo),
-          status: "success",
-          description: "Bank Withdrawal",
+          status: "pending",
+          reference,
+          transfer_code: transferData.data.transfer_code,
+          description: "Bank Withdrawal (Paystack)",
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
       });
 
-      res.json({ ok: true });
+      res.json({ ok: true, reference });
     } catch (err: any) {
+      console.error("Withdrawal Error:", err);
       res.status(400).send(err.message || "Withdrawal failed");
     }
   });

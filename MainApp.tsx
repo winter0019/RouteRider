@@ -175,6 +175,35 @@ const MainApp: React.FC = () => {
     }
   }, [profile]);
 
+  const refreshProfileFromBackend = useCallback(async () => {
+    if (!profile?.user_id) return;
+    try {
+      const firestoreProfile = await firestoreService.getUserProfile(profile.user_id);
+      if (firestoreProfile) {
+        const p: DriverProfile = {
+          ...profile,
+          full_name: firestoreProfile.full_name,
+          phone_number: firestoreProfile.phone_number || firestoreProfile.phone || 'N/A',
+          car_make: firestoreProfile.car_make || 'N/A',
+          car_model: firestoreProfile.car_model || 'N/A',
+          car_color: firestoreProfile.car_color || 'Standard',
+          plate_number: firestoreProfile.plate_number || 'N/A',
+          verification_status: firestoreProfile.verification_status || { phone: true, id: true, first_trip: false },
+          rating: firestoreProfile.rating || 5.0,
+          trip_count: firestoreProfile.trip_count || 0,
+          wallet_balance: firestoreProfile.wallet_balance || 0,
+          total_earnings: firestoreProfile.total_earnings || 0,
+          profile_photo_url: firestoreProfile.profile_photo_url,
+          bank_details: firestoreProfile.bank_details
+        } as any;
+        setProfile(p);
+        localStorage.setItem("rr_profile", JSON.stringify(p));
+      }
+    } catch (error) {
+      console.error("Failed to refresh profile:", error);
+    }
+  }, [profile]);
+
   const handleTransaction = async (txData: { type: 'deposit' | 'withdrawal'; amount: number; description: string }) => {
     try {
       if (txData.description === 'Refresh') {
@@ -459,6 +488,7 @@ const MainApp: React.FC = () => {
               userRole={userRole}
               bookings={bookings}
               onTransaction={handleTransaction}
+              onRefreshProfile={refreshProfileFromBackend}
             />
           );
         case "settings":
@@ -515,6 +545,7 @@ const MainApp: React.FC = () => {
             userRole={userRole}
             bookings={bookings}
             onTransaction={handleTransaction}
+            onRefreshProfile={refreshProfileFromBackend}
           />
         );
       case "settings":

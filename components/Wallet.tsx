@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { DriverProfile, Transaction, Booking, BookingStatus } from '../types';
 import { ICONS, COLORS, ROUTES } from '../constants';
 import { api } from '../services/api';
+import BankAccountSetup from './BankAccountSetup';
 
 interface WalletProps {
   profile: DriverProfile;
@@ -10,13 +11,17 @@ interface WalletProps {
   userRole: 'driver' | 'passenger';
   bookings?: Booking[];
   onTransaction?: (tx: { type: 'deposit' | 'withdrawal'; amount: number; description: string }) => Promise<void>;
+  onRefreshProfile?: () => Promise<void>;
 }
 
-const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bookings = [], onTransaction }) => {
+const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bookings = [], onTransaction, onRefreshProfile }) => {
   const isDriver = userRole === 'driver';
-  const [showModal, setShowModal] = useState<'deposit' | 'withdraw' | null>(null);
+  const [showModal, setShowModal] = useState<'deposit' | 'withdraw' | 'link-bank' | null>(null);
   const [amount, setAmount] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+
+  const bankDetails = (profile as any).bank_details;
+  const isBankLinked = !!bankDetails?.recipient_code;
 
   // Check for Paystack reference on mount
   useEffect(() => {
@@ -72,22 +77,34 @@ const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bo
         }
       } else {
         // Withdrawal flow
+        if (!isBankLinked) {
+          setShowModal('link-bank');
+          return;
+        }
         await api.withdrawToBank({ amountNaira: numAmount });
         if (onTransaction) {
           await onTransaction({
             type: 'withdrawal',
             amount: numAmount,
-            description: 'Bank Withdrawal'
+            description: 'Bank Withdrawal (Pending)'
           });
         }
         setShowModal(null);
         setAmount('');
-        alert("Withdrawal successful!");
+        alert("Withdrawal initiated! Funds will arrive in your bank account shortly.");
       }
     } catch (error: any) {
       alert(error.message || "Transaction failed. Please try again.");
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleWithdrawClick = () => {
+    if (isDriver && !isBankLinked) {
+      setShowModal('link-bank');
+    } else {
+      setShowModal('withdraw');
     }
   };
 
@@ -115,13 +132,13 @@ const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bo
           {isDriver ? (
             <>
               <button 
-                onClick={() => setShowModal('withdraw')}
+                onClick={handleWithdrawClick}
                 className="flex-1 bg-white/20 backdrop-blur-md py-4 rounded-2xl font-black text-sm hover:bg-white/30 transition-colors"
               >
                 Withdraw
               </button>
               <button 
-                onClick={() => setShowModal('withdraw')}
+                onClick={handleWithdrawClick}
                 className="flex-1 bg-white text-emerald-600 py-4 rounded-2xl font-black text-sm shadow-sm active:scale-95 transition-all"
               >
                 Quick Payout
@@ -167,7 +184,7 @@ const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bo
                 <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 flex gap-3">
                   <div className="text-emerald-600">{ICONS.Check}</div>
                   <p className="text-[10px] text-emerald-800 font-bold leading-tight">
-                    Funds will be sent to your verified bank account ending in **4921.
+                    Funds will be sent to your verified bank account: {bankDetails?.bank_name} (**{bankDetails?.account_number?.slice(-4)})
                   </p>
                 </div>
               )}
@@ -191,6 +208,16 @@ const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bo
             </div>
           </div>
         </div>
+      )}
+
+      {showModal === 'link-bank' && (
+        <BankAccountSetup 
+          onSuccess={async () => {
+            if (onRefreshProfile) await onRefreshProfile();
+            setShowModal('withdraw');
+          }}
+          onCancel={() => setShowModal(null)}
+        />
       )}
 
       {/* Passenger Specific: My Rides */}
