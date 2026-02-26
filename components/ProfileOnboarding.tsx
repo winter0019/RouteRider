@@ -56,13 +56,16 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
       setIsVerifying(false);
 
       if (result.verified) {
+        const extractedName = result.extractedName || formData.full_name;
+        setFormData(prev => ({ ...prev, full_name: extractedName }));
+        
         try {
           await firestoreService.submitKYC({
             role: role as any,
             documentType: 'nin',
-            idImagePath: base64String, // In a real app, this would be a Storage path
-            selfiePath: '', // Placeholder for now
-            extractedName: formData.full_name,
+            idImagePath: base64String,
+            selfiePath: '',
+            extractedName: extractedName,
             aiDecision: result.verified ? 'pass' : 'fail',
             aiScore: result.confidence || 0,
             aiNotes: result.message
@@ -85,6 +88,9 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
       car_model: formData.car_model || 'N/A',
       car_color: 'Standard',
       plate_number: formData.plate_number || 'N/A',
+      kyc_status: role === 'driver' ? (verificationResult?.verified ? 'verified' : 'pending') : 'verified',
+      name_locked: role === 'driver' && !!verificationResult?.verified,
+      name_correction_used: false,
       verification_status: { 
         phone: true, 
         id: verificationResult?.verified || false, 
@@ -202,6 +208,9 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
                       car_model: existingProfile.car_model || 'N/A',
                       car_color: existingProfile.car_color || 'Standard',
                       plate_number: existingProfile.plate_number || 'N/A',
+                      kyc_status: existingProfile.kyc_status || 'none',
+                      name_locked: !!existingProfile.name_locked,
+                      name_correction_used: !!existingProfile.name_correction_used,
                       verification_status: existingProfile.verification_status || { phone: true, id: true, first_trip: false },
                       rating: existingProfile.rating || 5.0,
                       trip_count: existingProfile.trip_count || 0,

@@ -98,8 +98,23 @@ const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate, us
 
           <div className="space-y-4">
             <div className="space-y-1">
-              <label className="text-[10px] font-black text-gray-400 uppercase">Full Name</label>
-              <input value={editData.full_name} onChange={e => setEditData({...editData, full_name: e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl font-black border-2 border-transparent focus:border-emerald-500 outline-none" />
+              <div className="flex justify-between items-end">
+                <label className="text-[10px] font-black text-gray-400 uppercase">Full Name</label>
+                {profile.name_locked && (
+                  <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${profile.name_correction_used ? 'bg-slate-100 text-slate-400' : 'bg-amber-100 text-amber-600'}`}>
+                    {profile.name_correction_used ? 'Locked' : 'One-time Correction Available'}
+                  </span>
+                )}
+              </div>
+              <input 
+                value={editData.full_name} 
+                onChange={e => setEditData({...editData, full_name: e.target.value})} 
+                disabled={profile.name_locked && profile.name_correction_used}
+                className={`w-full p-3 bg-slate-50 rounded-xl font-black border-2 border-transparent focus:border-emerald-500 outline-none transition-all ${profile.name_locked && profile.name_correction_used ? 'opacity-50 cursor-not-allowed' : ''}`} 
+              />
+              {profile.name_locked && !profile.name_correction_used && (
+                <p className="text-[9px] text-amber-600 font-bold px-1 italic">Note: This is your final allowed name correction.</p>
+              )}
             </div>
             
             {isDriver && (

@@ -714,12 +714,18 @@ async function requireFirebaseAuth(req: any, res: any, next: any) {
         return res.status(400).json({ error: "Invalid status" });
       }
 
+      const kyc_status = status === "approved" ? "verified" : "failed";
+
       await db.collection(KYC_COL).doc(uid).set(
         { status, reviewedBy: req.uid, reviewedAt: admin.firestore.FieldValue.serverTimestamp() },
         { merge: true }
       );
 
-      await db.collection(USERS_COL).doc(uid).set({ kycStatus: status }, { merge: true });
+      await db.collection(USERS_COL).doc(uid).set({ 
+        kyc_status,
+        name_locked: status === "approved",
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
 
       res.json({ ok: true });
     } catch (err: any) {
@@ -769,6 +775,13 @@ async function requireFirebaseAuth(req: any, res: any, next: any) {
 
   app.post("/api/rides", requireFirebaseAuth, async (req: any, res) => {
     try {
+      const userSnap = await db.collection(USERS_COL).doc(req.uid).get();
+      const userData = userSnap.data() as any;
+
+      if (userData?.kyc_status !== "verified") {
+        return res.status(403).json({ error: "KYC verification required to post trips." });
+      }
+
       const tripData = req.body;
       const ref = await db.collection(RIDES_COL).add({
         ...tripData,
@@ -897,10 +910,42 @@ async function requireFirebaseAuth(req: any, res: any, next: any) {
   app.post("/api/users/profile", requireFirebaseAuth, async (req: any, res) => {
     try {
       const data = req.body;
-      await db.collection(USERS_COL).doc(req.uid).set(
-        { ...data, updatedAt: admin.firestore.FieldValue.serverTimestamp() },
-        { merge: true }
-      );
+      const userRef = db.collection(USERS_COL).doc(req.uid);
+      const userSnap = await userRef.get();
+      
+      if (!userSnap.exists) {
+        // Initial profile creation
+        // Passengers are auto-verified for now, drivers must go through KYC
+        const initialKycStatus = data.userType === 'passenger' ? 'verified' : 'none';
+        
+        await userRef.set({
+          ...data,
+          kyc_status: initialKycStatus,
+          name_locked: data.userType === 'passenger', // Passengers names are locked if they are verified
+          name_correction_used: false,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        return res.json({ ok: true });
+      }
+
+      const userData = userSnap.data() as any;
+      
+      // Prevent client from overriding sensitive fields
+      const { kyc_status, name_locked, name_correction_used, ...safeData } = data;
+      const updates: any = { ...safeData, updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+
+      // Name Locking Logic
+      if (userData.name_locked && data.full_name && data.full_name !== userData.full_name) {
+        // Check if one-time correction is available
+        if (userData.name_correction_used) {
+          return res.status(403).json({ error: "Name is locked and correction has already been used." });
+        }
+        // Allow one-time correction
+        updates.name_correction_used = true;
+        console.log(`User ${req.uid} used their one-time name correction.`);
+      }
+
+      await userRef.update(updates);
       res.json({ ok: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -920,9 +965,19 @@ async function requireFirebaseAuth(req: any, res: any, next: any) {
 
       await db.collection(KYC_COL).doc(req.uid).set(submission);
 
-      await db.collection(USERS_COL).doc(req.uid).set({ kycStatus: "submitted" }, { merge: true });
+      // Simulate automatic extraction and verification for demo/MVP purposes
+      // In a real app, this would be handled by a background worker or manual review
+      const extractedName = data.extractedName || data.full_name; 
+      
+      await db.collection(USERS_COL).doc(req.uid).set({ 
+        kyc_status: "verified", // Auto-verify for MVP
+        full_name: extractedName,
+        name_locked: true,
+        name_correction_used: false,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
 
-      res.json({ ok: true });
+      res.json({ ok: true, kyc_status: "verified", full_name: extractedName });
     } catch (err: any) {
       console.error("KYC Submit Error:", err);
       res.status(500).json({ error: err.message });
@@ -1722,9 +1777,14 @@ app.post("/api/trips/:tripId/complete", requireFirebaseAuth, async (req: any, re
     const amountNaira = Number(amountKobo) / 100;
 
     try {
-      // 1) Get driver's recipient_code
+      // 1) Get driver's profile and check KYC
       const userSnap = await db.collection(USERS_COL).doc(uid).get();
       const user: any = userSnap.data();
+
+      if (user?.kyc_status !== "verified") {
+        return res.status(403).json({ error: "KYC verification required to withdraw funds." });
+      }
+
       const recipient_code = user?.bank_details?.recipient_code;
 
       if (!recipient_code) {

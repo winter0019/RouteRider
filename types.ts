@@ -18,7 +18,11 @@ export interface User {
   user_id: string;
   phone_number: string;
   full_name: string;
+  email?: string;
   profile_photo_url?: string;
+  kyc_status: 'none' | 'pending' | 'verified' | 'failed';
+  name_locked: boolean;
+  name_correction_used: boolean;
   verification_status: {
     phone: boolean;
     id: boolean;

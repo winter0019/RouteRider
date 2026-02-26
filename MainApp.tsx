@@ -11,6 +11,7 @@ import { ICONS, COLORS } from "./constants";
 import Dashboard from "./components/Dashboard";
 import TripPosting from "./components/TripPosting";
 import BookingManagement from "./components/BookingManagement";
+import KYCStatusPage from "./components/KYCStatusPage";
 import WalletView from "./components/Wallet";
 import ProfileOnboarding from "./components/ProfileOnboarding";
 import SettingsView from "./components/Settings";
@@ -62,9 +63,6 @@ const MainApp: React.FC = () => {
   };
 
   const handleUpdateProfile = async (newProfile: DriverProfile) => {
-    setProfile(newProfile);
-    localStorage.setItem("rr_profile", JSON.stringify(newProfile));
-    
     if (newProfile.user_id) {
       try {
         await firestoreService.updateUserProfile(newProfile.user_id, {
@@ -75,8 +73,12 @@ const MainApp: React.FC = () => {
           plate_number: newProfile.plate_number,
           profile_photo_url: newProfile.profile_photo_url
         });
-      } catch (error) {
+        setProfile(newProfile);
+        localStorage.setItem("rr_profile", JSON.stringify(newProfile));
+      } catch (error: any) {
         console.error("Failed to update profile in Firestore:", error);
+        alert(error.message || "Failed to update profile.");
+        refreshProfileFromBackend();
       }
     }
   };
@@ -188,6 +190,9 @@ const MainApp: React.FC = () => {
           car_model: firestoreProfile.car_model || 'N/A',
           car_color: firestoreProfile.car_color || 'Standard',
           plate_number: firestoreProfile.plate_number || 'N/A',
+          kyc_status: firestoreProfile.kyc_status || 'none',
+          name_locked: !!firestoreProfile.name_locked,
+          name_correction_used: !!firestoreProfile.name_correction_used,
           verification_status: firestoreProfile.verification_status || { phone: true, id: true, first_trip: false },
           rating: firestoreProfile.rating || 5.0,
           trip_count: firestoreProfile.trip_count || 0,
@@ -292,6 +297,9 @@ const MainApp: React.FC = () => {
                 car_model: firestoreProfile.car_model || 'N/A',
                 car_color: firestoreProfile.car_color || 'Standard',
                 plate_number: firestoreProfile.plate_number || 'N/A',
+                kyc_status: firestoreProfile.kyc_status || 'none',
+                name_locked: !!firestoreProfile.name_locked,
+                name_correction_used: !!firestoreProfile.name_correction_used,
                 verification_status: firestoreProfile.verification_status || { phone: true, id: true, first_trip: false },
                 rating: firestoreProfile.rating || 5.0,
                 trip_count: firestoreProfile.trip_count || 0,
@@ -489,6 +497,21 @@ const MainApp: React.FC = () => {
           // after login, refresh trips too
           refreshTripsFromBackend();
         }}
+      />
+    );
+  }
+
+  if (profile && profile.kyc_status !== 'verified') {
+    return (
+      <KYCStatusPage 
+        profile={profile} 
+        onRetry={() => {
+          localStorage.removeItem("rr_profile");
+          localStorage.removeItem("rr_role");
+          setProfile(null);
+          setIsLoggedIn(false);
+        }}
+        onLogout={handleLogout}
       />
     );
   }
