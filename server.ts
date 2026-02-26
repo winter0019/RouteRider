@@ -993,21 +993,23 @@ app.post("/api/kyc/submit", requireFirebaseAuth, async (req: any, res) => {
     const data = req.body || {};
     const uid = req.uid;
 
-    // ✅ Store submission
+    // ✅ store submission (always PENDING)
     const submission = {
       ...data,
       uid,
-      status: "submitted",
+      status: "pending", // ✅ consistent
+      reason: null,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
     await db.collection(KYC_COL).doc(uid).set(submission, { merge: true });
 
-    // ✅ Set user to pending (FAIL-CLOSED)
+    // ✅ set user to pending (FAIL-CLOSED)
     await db.collection(USERS_COL).doc(uid).set(
       {
         kyc_status: "pending",
+        kyc_reason: null,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       },
       { merge: true }
@@ -1034,54 +1036,43 @@ app.post("/api/kyc/verify", requireFirebaseAuth, async (req: any, res) => {
 
     const kyc = kycSnap.data() as any;
 
-    // ✅ Example: strict verification logic placeholder
-    // Replace with your real AI extraction + selfie match
-    const extractedName = String(kyc.extractedName || "").trim();
-    const selfieMatch = kyc.selfieMatch === true; // example boolean
-    const docValid = !!kyc.documentUrl || !!kyc.documentBase64;
+    // ✅ Adjust these fields to match what your frontend sends/stores
+    const extractedName = String(kyc.extractedName || kyc.extracted_name || "").trim();
+    const selfieMatch = kyc.selfieMatch === true || kyc.selfie_match === true; // boolean
+    const docValid = Boolean(kyc.documentUrl || kyc.document_url || kyc.documentBase64 || kyc.document_base64);
 
-    // FAIL-CLOSED checks
-    if (!docValid) {
+    const fail = async (reason: string, httpStatus = 400) => {
       await db.collection(USERS_COL).doc(uid).set(
         {
           kyc_status: "failed",
-          kyc_reason: "Missing document",
+          kyc_reason: reason,
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         },
         { merge: true }
       );
-      return res.status(400).json({ error: "Missing document. Verification failed." });
-    }
 
-    if (!extractedName) {
-      await db.collection(USERS_COL).doc(uid).set(
+      await db.collection(KYC_COL).doc(uid).set(
         {
-          kyc_status: "failed",
-          kyc_reason: "Name extraction failed",
+          status: "failed",
+          reason,
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         },
         { merge: true }
       );
-      return res.status(400).json({ error: "Could not extract name. Verification failed." });
-    }
 
-    // If you require selfie match, enforce it
-    if (!selfieMatch) {
-      await db.collection(USERS_COL).doc(uid).set(
-        {
-          kyc_status: "failed",
-          kyc_reason: "Selfie mismatch",
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-      return res.status(400).json({ error: "Selfie does not match document." });
-    }
+      return res.status(httpStatus).json({ error: reason });
+    };
+
+    // ✅ FAIL-CLOSED checks
+    if (!docValid) return fail("Missing document");
+    if (!extractedName) return fail("Name extraction failed");
+    if (!selfieMatch) return fail("Selfie mismatch");
 
     // ✅ VERIFIED (only here)
     await db.collection(USERS_COL).doc(uid).set(
       {
         kyc_status: "verified",
+        kyc_reason: null,
         full_name: extractedName,
         name_locked: true,
         verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1093,6 +1084,8 @@ app.post("/api/kyc/verify", requireFirebaseAuth, async (req: any, res) => {
     await db.collection(KYC_COL).doc(uid).set(
       {
         status: "verified",
+        reason: null,
+        verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       },
       { merge: true }
@@ -1107,6 +1100,15 @@ app.post("/api/kyc/verify", requireFirebaseAuth, async (req: any, res) => {
       {
         kyc_status: "failed",
         kyc_reason: err.message || "Verification error",
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    await db.collection(KYC_COL).doc(uid).set(
+      {
+        status: "failed",
+        reason: err.message || "Verification error",
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       },
       { merge: true }
