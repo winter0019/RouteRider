@@ -156,6 +156,63 @@ const USERS_COL = "users";
 const PAYMENT_INTENTS_COL = "payment_intents";
 const KYC_COL = "kyc_submissions";
 
+async function createPaystackRecipient(params: {
+  name: string;
+  account_number: string;
+  bank_code: string;
+}) {
+  const secret = process.env.PAYSTACK_SECRET_KEY;
+  if (!secret) throw new Error("PAYSTACK_SECRET_KEY missing");
+
+  const res = await fetch("https://api.paystack.co/transferrecipient", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${secret}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      type: "nuban",
+      name: params.name,
+      account_number: params.account_number,
+      bank_code: params.bank_code,
+      currency: "NGN",
+    }),
+  });
+
+  const data = await res.json();
+  if (!data.status) throw new Error(data.message || "Failed to create recipient");
+  return data.data.recipient_code;
+}
+
+async function initiatePaystackTransfer(params: {
+  amountKobo: number;
+  recipient: string;
+  reason: string;
+  reference: string;
+}) {
+  const secret = process.env.PAYSTACK_SECRET_KEY;
+  if (!secret) throw new Error("PAYSTACK_SECRET_KEY missing");
+
+  const res = await fetch("https://api.paystack.co/transfer", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${secret}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      source: "balance",
+      amount: params.amountKobo,
+      recipient: params.recipient,
+      reason: params.reason,
+      reference: params.reference,
+    }),
+  });
+
+  const data = await res.json();
+  if (!data.status) throw new Error(data.message || "Transfer failed");
+  return data.data;
+}
+
 let ridesCache: any = null;
 let lastRidesFetch = 0;
 const RIDES_CACHE_TTL = 30000; // 30 seconds
@@ -740,6 +797,51 @@ async function requireFirebaseAuth(req: any, res: any, next: any) {
   // ------------------------------------------------------
   // Rides / Trips
   // ------------------------------------------------------
+  app.get("/api/rides/search", async (req, res) => {
+    try {
+      const { origin, destination, date } = req.query as any;
+      const now = admin.firestore.Timestamp.now();
+
+      let qRides = db.collection(RIDES_COL)
+        .where("status", "==", "posted")
+        .where("expiresAt", ">", now);
+
+      let qTrips = db.collection(TRIPS_COL)
+        .where("status", "==", "posted")
+        .where("expiresAt", ">", now);
+
+      if (origin) {
+        const ok = origin.toLowerCase().trim();
+        qRides = qRides.where("origin_key", "==", ok);
+        qTrips = qTrips.where("origin_key", "==", ok);
+      }
+      if (destination) {
+        const dk = destination.toLowerCase().trim();
+        qRides = qRides.where("destination_key", "==", dk);
+        qTrips = qTrips.where("destination_key", "==", dk);
+      }
+
+      const [ridesSnap, tripsSnap] = await Promise.all([qRides.get(), qTrips.get()]);
+
+      const rides = ridesSnap.docs.map(d => ({ id: d.id, trip_id: d.id, source: "rides", ...d.data() }));
+      const trips = tripsSnap.docs.map(d => ({ id: d.id, trip_id: d.id, source: "trips", ...d.data() }));
+
+      let combined = [...rides, ...trips];
+
+      // Client-side date filtering if provided
+      if (date) {
+        combined = combined.filter((t: any) => {
+          const tDate = new Date(t.departure_time).toISOString().split('T')[0];
+          return tDate === date;
+        });
+      }
+
+      res.json(combined);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/rides", async (_req, res) => {
     try {
       const now = Date.now();
@@ -804,8 +906,19 @@ async function requireFirebaseAuth(req: any, res: any, next: any) {
       }
 
       const tripData = req.body;
+      const { origin, destination, pickup_area, pickup_landmark } = tripData;
+
+      if (!pickup_area || !pickup_landmark) {
+        return res.status(400).json({ error: "Pickup area and landmark are required." });
+      }
+
+      const now = Date.now();
+      const expiresAt = new Date(now + 24 * 60 * 60 * 1000); // 24 hours from now
+
       const ref = await db.collection(RIDES_COL).add({
         ...tripData,
+        origin_key: origin?.toLowerCase().trim() || "",
+        destination_key: destination?.toLowerCase().trim() || "",
         carOwnerId: req.uid,
         driver_id: req.uid,
         bookedBy: [],
@@ -813,6 +926,7 @@ async function requireFirebaseAuth(req: any, res: any, next: any) {
         status: "posted",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
       });
       res.json({ id: ref.id, ...tripData });
     } catch (err: any) {
@@ -952,8 +1066,24 @@ async function requireFirebaseAuth(req: any, res: any, next: any) {
       const userData = userSnap.data() as any;
       
       // Prevent client from overriding sensitive fields
-      const { kyc_status, name_locked, name_correction_used, ...safeData } = data;
+      const { kyc_status, name_locked, name_correction_used, recipient_code, ...safeData } = data;
       const updates: any = { ...safeData, updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+
+      // If bank details changed, create/update Paystack recipient
+      if (data.account_number && data.bank_code && (data.account_number !== userData.account_number || data.bank_code !== userData.bank_code)) {
+        try {
+          const newRecipientCode = await createPaystackRecipient({
+            name: data.account_name || userData.full_name || "RouteRider Driver",
+            account_number: data.account_number,
+            bank_code: data.bank_code
+          });
+          updates.recipient_code = newRecipientCode;
+          updates.payout_enabled = true;
+        } catch (err: any) {
+          console.error("Paystack Recipient Error:", err);
+          return res.status(400).json({ error: `Failed to verify bank details: ${err.message}` });
+        }
+      }
 
       // Name Locking Logic
       if (userData.name_locked && data.full_name && data.full_name !== userData.full_name) {
@@ -1430,92 +1560,81 @@ app.post("/api/bookings/:bookingId/complete", requireFirebaseAuth, async (req: a
   const uid = req.uid;
 
   try {
-    const result = await db.runTransaction(async (tx) => {
-      const bookingRef = db.collection(BOOKINGS_COL).doc(bookingId);
-      const bookingSnap = await tx.get(bookingRef);
-      if (!bookingSnap.exists) throw new Error("Booking not found");
+    const bookingRef = db.collection(BOOKINGS_COL).doc(bookingId);
+    const bookingSnap = await bookingRef.get();
+    if (!bookingSnap.exists) throw new Error("Booking not found");
 
-      const booking: any = bookingSnap.data();
-      const tripId = booking.trip_id || booking.rideId;
+    const booking: any = bookingSnap.data();
+    const driverUid = booking.driver_id || booking.driverId;
+    if (driverUid !== uid) throw new Error("Unauthorized (not trip driver)");
 
-      const driverUid = booking.driver_id || booking.driverId;
-      if (!driverUid) throw new Error("Booking missing driver_id");
-      if (driverUid !== uid) throw new Error("Unauthorized (not trip driver)");
+    if (!["escrowed", "accepted", "confirmed"].includes(booking.status)) {
+      throw new Error(`Booking not releasable. Current status: ${booking.status}`);
+    }
 
-      if (!["escrowed", "accepted", "confirmed"].includes(booking.status)) {
-        throw new Error(`Booking not releasable. Current status: ${booking.status}`);
-      }
+    const escrowRef = db.collection(ESCROWS_COL).doc(bookingId);
+    const escrowSnap = await escrowRef.get();
+    if (!escrowSnap.exists) throw new Error("Escrow record not found");
 
-      const escrowRef = db.collection(ESCROWS_COL).doc(bookingId);
-      const escrowSnap = await tx.get(escrowRef);
-      if (!escrowSnap.exists) throw new Error("Escrow record not found");
+    const escrow: any = escrowSnap.data();
+    if (escrow.status !== "held") throw new Error(`Escrow not held. Current: ${escrow.status}`);
 
-      const escrow: any = escrowSnap.data();
-      if (escrow.status !== "held") throw new Error(`Escrow not held. Current: ${escrow.status}`);
+    const driverSnap = await db.collection(USERS_COL).doc(driverUid).get();
+    const driverData = driverSnap.data() as any;
 
-      const netToDriverKobo = Number(booking.netToDriverKobo || booking.amountKobo || 0);
-      if (netToDriverKobo <= 0) throw new Error("Booking has 0 netToDriverKobo/amountKobo");
+    if (!driverData?.recipient_code) {
+      throw new Error("Driver has no bank account configured for payouts.");
+    }
 
-      const netToDriverNaira = netToDriverKobo / 100;
+    const netToDriverKobo = Number(booking.netToDriverKobo || booking.amountKobo || 0);
+    if (netToDriverKobo <= 0) throw new Error("Booking has 0 netToDriverKobo/amountKobo");
 
-      // Credit driver wallet
-      const driverWalletRef = db.collection(WALLETS_COL).doc(driverUid);
-      tx.set(
-        driverWalletRef,
-        {
-          uid: driverUid,
-          balanceKobo: admin.firestore.FieldValue.increment(netToDriverKobo),
-          balance: admin.firestore.FieldValue.increment(netToDriverNaira),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
+    // 1. Mark as processing to prevent double payout
+    await bookingRef.update({ status: "processing_payout" });
 
-      // Optional mirror
-      tx.set(
-        db.collection(USERS_COL).doc(driverUid),
-        {
-          wallet_balance: admin.firestore.FieldValue.increment(netToDriverNaira),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
+    try {
+      // 2. Initiate Paystack Transfer
+      await initiatePaystackTransfer({
+        amountKobo: netToDriverKobo,
+        recipient: driverData.recipient_code,
+        reason: `RouteRider Payout for Booking #${bookingId}`,
+        reference: `payout_${bookingId}_${Date.now()}`
+      });
 
-      // Booking + Escrow
-      tx.update(bookingRef, {
+      // 3. Update Firestore
+      const batch = db.batch();
+      batch.update(bookingRef, {
         status: "completed",
         completedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
-
-      tx.update(escrowRef, {
+      batch.update(escrowRef, {
         status: "released",
         releasedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
-
-      // Transaction log
-      tx.set(db.collection(TX_COL).doc(`escrow_release_${bookingId}`), {
+      
+      // Log transaction for history
+      const txRef = db.collection(TX_COL).doc(`payout_${bookingId}`);
+      batch.set(txRef, {
         user_id: driverUid,
         uid: driverUid,
-        type: "escrow_release",
-        amount: netToDriverNaira,
+        type: 'withdrawal',
+        amount: netToDriverKobo / 100,
         amountKobo: netToDriverKobo,
-        status: "success",
-        bookingId,
-        trip_id: tripId,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        description: `Direct bank payout for booking #${bookingId}`,
+        status: 'success',
+        booking_id: bookingId,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
-      return {
-        bookingId,
-        tripId,
-        creditedKobo: netToDriverKobo,
-        creditedNaira: netToDriverNaira,
-      };
-    });
-
-    return res.json({ ok: true, ...result });
+      await batch.commit();
+      res.json({ ok: true, message: "Payout successful" });
+    } catch (transferErr: any) {
+      console.error("Payout Transfer Error:", transferErr);
+      await bookingRef.update({ status: "escrowed", payout_error: transferErr.message });
+      res.status(500).json({ error: `Payout failed: ${transferErr.message}. Please try again.` });
+    }
   } catch (err: any) {
     console.error("Complete Booking Error:", err);
     return res.status(400).json({ error: err.message || "Failed to complete booking" });

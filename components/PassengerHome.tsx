@@ -1,38 +1,27 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { Trip, DriverProfile } from '../types';
-import { ICONS, ROUTES, COLORS } from '../constants';
+import React, { useState, useEffect } from 'react';
+import { Trip } from '../types';
+import { ICONS, ROUTES } from '../constants';
+import { api } from '../services/api';
 
 interface PassengerHomeProps {
-  trips: Trip[];
   onBook: (trip: Trip, method: 'wallet' | 'paystack') => void;
 }
 
-const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
+const PassengerHome: React.FC<PassengerHomeProps> = ({ onBook }) => {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [originQuery, setOriginQuery] = useState('');
   const [destQuery, setDestQuery] = useState('');
   const [dateQuery, setDateQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [bookingTripId, setBookingTripId] = useState<string | null>(null);
   const [bookedTripIds, setBookedTripIds] = useState<Set<string>>(new Set());
   const [bookingError, setBookingError] = useState<string | null>(null);
-  const [appliedFilters, setAppliedFilters] = useState({ origin: '', dest: '', date: '' });
   const [confirmedTrip, setConfirmedTrip] = useState<Trip | null>(null);
-
-  const filteredTrips = useMemo(() => {
-    return trips.filter(trip => {
-      const [origin, destination] = trip.route.split('→').map(s => s.trim().toLowerCase());
-      const matchesOrigin = appliedFilters.origin === '' || origin.includes(appliedFilters.origin.toLowerCase());
-      const matchesDest = appliedFilters.dest === '' || destination.includes(appliedFilters.dest.toLowerCase());
-      
-      const tripDate = new Date(trip.departure_time).toISOString().split('T')[0];
-      const matchesDate = appliedFilters.date === '' || tripDate === appliedFilters.date;
-      
-      return matchesOrigin && matchesDest && matchesDate;
-    });
-  }, [trips, appliedFilters]);
+  const [paymentMethod, setPaymentMethod] = useState<'wallet' | 'paystack'>('wallet');
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -41,22 +30,33 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
     return () => clearTimeout(timer);
   }, []);
 
-  const handleSearch = () => {
+  const handleSearch = async () => {
+    if (!originQuery && !destQuery) return;
+    
     setIsSearching(true);
-    setTimeout(() => {
-      setAppliedFilters({ origin: originQuery, dest: destQuery, date: dateQuery });
+    setBookingError(null);
+    try {
+      const results = await api.searchTrips({
+        origin: originQuery,
+        destination: destQuery,
+        date: dateQuery
+      });
+      setTrips(results);
+      setHasSearched(true);
+    } catch (err: any) {
+      setBookingError(err.message || "Search failed");
+    } finally {
       setIsSearching(false);
-    }, 400);
+    }
   };
 
   const handleReset = () => {
     setOriginQuery('');
     setDestQuery('');
     setDateQuery('');
-    setAppliedFilters({ origin: '', dest: '', date: '' });
+    setTrips([]);
+    setHasSearched(false);
   };
-
-  const [paymentMethod, setPaymentMethod] = useState<'wallet' | 'paystack'>('wallet');
 
   const confirmBooking = async (trip: Trip) => {
     if (trip.seats_available <= trip.seats_booked) return;
@@ -73,11 +73,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
       }
     } catch (error: any) {
       console.error('Booking error:', error);
-      if (error.code === 'permission-denied') {
-        setBookingError('Permission Denied: Check Firestore Security Rules.');
-      } else {
-        setBookingError('Booking failed. Please try again.');
-      }
+      setBookingError(error.message || 'Booking failed. Please try again.');
     } finally {
       setBookingTripId(null);
     }
@@ -87,7 +83,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
         <div className="w-12 h-12 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
-        <p className="font-black text-gray-400 animate-pulse">Checking for available rides...</p>
+        <p className="font-black text-gray-400 animate-pulse">Loading RouteRider...</p>
       </div>
     );
   }
@@ -96,7 +92,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
     <div className="space-y-6">
       <header className="space-y-1">
         <h2 className="text-3xl font-black tracking-tight">Find a Ride</h2>
-        <p className="text-gray-500 font-bold text-sm">Real-time trips from verified car owners.</p>
+        <p className="text-gray-500 font-bold text-sm">Search for available trips across Nigeria.</p>
       </header>
 
       {bookingError && (
@@ -144,8 +140,8 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
         <div className="flex gap-2">
           <button 
             onClick={handleSearch}
-            disabled={isSearching}
-            className="flex-1 bg-emerald-600 text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-emerald-100 flex items-center justify-center gap-2 hover:bg-emerald-700 active:scale-95 transition-all"
+            disabled={isSearching || (!originQuery && !destQuery)}
+            className="flex-1 bg-emerald-600 text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-emerald-100 flex items-center justify-center gap-2 hover:bg-emerald-700 active:scale-95 transition-all disabled:opacity-50"
           >
             {isSearching ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : (
               <>
@@ -154,7 +150,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
               </>
             )}
           </button>
-          {(appliedFilters.origin !== '' || appliedFilters.dest !== '') && (
+          {hasSearched && (
             <button 
               onClick={handleReset}
               className="bg-slate-100 text-slate-500 px-4 rounded-2xl font-black text-sm hover:bg-slate-200 active:scale-95 transition-all"
@@ -166,17 +162,19 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
       </section>
 
       <section className="space-y-4">
-        <div className="flex items-center justify-between px-1">
-          <h3 className="font-black text-xs text-gray-400 uppercase tracking-widest">
-            {appliedFilters.origin || appliedFilters.dest ? 'Filtered Results' : 'Available Routes'}
-          </h3>
-          <span className="text-[10px] bg-emerald-100 text-emerald-700 font-black px-2 py-0.5 rounded-full uppercase">
-            {filteredTrips.length} Active
-          </span>
-        </div>
+        {hasSearched && (
+          <div className="flex items-center justify-between px-1">
+            <h3 className="font-black text-xs text-gray-400 uppercase tracking-widest">
+              Search Results
+            </h3>
+            <span className="text-[10px] bg-emerald-100 text-emerald-700 font-black px-2 py-0.5 rounded-full uppercase">
+              {trips.length} Found
+            </span>
+          </div>
+        )}
         
-        {filteredTrips.length > 0 ? (
-          filteredTrips.map(trip => {
+        {trips.length > 0 ? (
+          trips.map(trip => {
             const isBooked = bookedTripIds.has(trip.trip_id);
             const isBooking = bookingTripId === trip.trip_id;
             const remaining = trip.seats_available - trip.seats_booked;
@@ -218,6 +216,18 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
                   </div>
                 </div>
 
+                {trip.pickup_landmark && (
+                  <div className="flex items-start gap-2 bg-slate-50 p-3 rounded-2xl">
+                    <div className="text-emerald-500 mt-0.5">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                    </div>
+                    <div className="space-y-0.5">
+                      <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Pickup Landmark</p>
+                      <p className="text-xs font-black text-slate-700">{trip.pickup_landmark}</p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between gap-4">
                    <div className="flex-1 flex items-center gap-2">
                       <span className={`w-2 h-2 rounded-full ${remaining > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></span>
@@ -232,17 +242,25 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
               </div>
             );
           })
+        ) : hasSearched ? (
+          <div className="bg-slate-50 border-2 border-dashed border-slate-200 p-12 rounded-[2rem] text-center space-y-4">
+            <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto shadow-sm text-slate-300">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </div>
+            <p className="text-sm font-black text-gray-500">
+              No trips match your search criteria.
+            </p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest italic">Try different locations or dates</p>
+          </div>
         ) : (
           <div className="bg-slate-50 border-2 border-dashed border-slate-200 p-12 rounded-[2rem] text-center space-y-4">
             <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto shadow-sm text-slate-300">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             </div>
             <p className="text-sm font-black text-gray-500">
-              {appliedFilters.origin || appliedFilters.dest 
-                ? "No trips match your search criteria." 
-                : "No vehicles have posted trips yet."}
+              Enter your route above to find available rides.
             </p>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest italic">Try changing your search</p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest italic">Trips expire after 24 hours</p>
           </div>
         )}
       </section>
@@ -256,7 +274,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
              <header className="flex justify-between items-start">
                 <div className="space-y-1">
                   <h3 className="text-2xl font-black leading-tight">{selectedTrip.route}</h3>
-                  <p className="text-emerald-600 font-black">₦{ROUTES.SUGGESTED_PRICE_PER_SEAT.toLocaleString()} per seat</p>
+                  <p className="text-emerald-600 font-black">₦{(selectedTrip.price_per_seat || ROUTES.SUGGESTED_PRICE_PER_SEAT).toLocaleString()} per seat</p>
                 </div>
                 <button onClick={() => setSelectedTrip(null)} className="p-2 bg-slate-100 rounded-full text-slate-400">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -268,7 +286,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
                    <img src={`https://picsum.photos/100/100?seed=${selectedTrip.driver_id}`} className="w-14 h-14 rounded-2xl border-2 border-white shadow-sm" />
                    <div>
                       <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Car Owner</p>
-                      <h4 className="font-black text-black">{selectedTrip.driver_name || 'Ahmad Bello'}</h4>
+                      <h4 className="font-black text-black">{selectedTrip.driver_name || 'Verified Owner'}</h4>
                       <div className="flex items-center gap-1 text-amber-500 font-black text-xs">
                         {ICONS.Star} 4.9 • Verified
                       </div>
@@ -307,6 +325,14 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
                       <p className="text-[10px] text-emerald-600 font-bold">Today</p>
                    </div>
                 </div>
+
+                {selectedTrip.pickup_landmark && (
+                  <div className="bg-slate-50 p-4 rounded-3xl space-y-1">
+                    <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Pickup Point</p>
+                    <p className="font-black text-sm">{selectedTrip.pickup_landmark}</p>
+                    {selectedTrip.pickup_area && <p className="text-[10px] text-slate-500 font-bold">{selectedTrip.pickup_area}</p>}
+                  </div>
+                )}
              </section>
 
              <div className="pt-4">
@@ -363,6 +389,14 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
                   </div>
                 </div>
 
+                {/* Pickup Section */}
+                {confirmedTrip.pickup_landmark && (
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Pickup Point</p>
+                    <h4 className="text-sm font-black text-emerald-700">{confirmedTrip.pickup_landmark}</h4>
+                  </div>
+                )}
+
                 {/* Driver & Car Details */}
                 <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-3xl border border-slate-100">
                   <img 
@@ -371,7 +405,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ trips, onBook }) => {
                   />
                   <div className="flex-1">
                     <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Your Driver</p>
-                    <h4 className="font-black text-black leading-tight">{confirmedTrip.driver_name || 'Ahmad Bello'}</h4>
+                    <h4 className="font-black text-black leading-tight">{confirmedTrip.driver_name || 'Verified Owner'}</h4>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-[10px] bg-emerald-100 text-emerald-700 font-black px-2 py-0.5 rounded-full uppercase tracking-tighter">Verified</span>
                       <span className="text-[10px] text-amber-500 font-black flex items-center gap-0.5">{ICONS.Star} 4.9</span>

@@ -160,6 +160,21 @@ export const api = {
     return data.map((d: any) => d.source === "trips" ? mapTripDocToTrip(d.id, d) : mapRideDocToTrip(d.id, d));
   },
 
+  async searchTrips(params: { origin?: string; destination?: string; date?: string }): Promise<Trip[]> {
+    const query = new URLSearchParams();
+    if (params.origin) query.append("origin", params.origin);
+    if (params.destination) query.append("destination", params.destination);
+    if (params.date) query.append("date", params.date);
+
+    const res = await fetch(`/api/rides/search?${query.toString()}`, { mode: 'same-origin' });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(text || `Failed to search trips: ${res.status}`);
+    }
+    const data = await res.json();
+    return data.map((d: any) => d.source === "trips" ? mapTripDocToTrip(d.id, d) : mapRideDocToTrip(d.id, d));
+  },
+
   async getTrip(tripId: string, source: "rides" | "trips" = "rides"): Promise<Trip | null> {
     const res = await fetch(`/api/rides/${tripId}?source=${source}`, { mode: 'same-origin' });
     if (!res.ok) return null;

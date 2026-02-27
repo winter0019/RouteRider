@@ -13,6 +13,8 @@ interface TripPostingProps {
 const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigate, profile }) => {
   const [origin, setOrigin] = useState('Katsina');
   const [destination, setDestination] = useState('Kano');
+  const [pickupArea, setPickupArea] = useState('');
+  const [pickupLandmark, setPickupLandmark] = useState('');
   const [departureTime, setDepartureTime] = useState('07:00');
   const [seats, setSeats] = useState(3);
   const [price, setPrice] = useState(ROUTES.SUGGESTED_PRICE_PER_SEAT);
@@ -26,6 +28,8 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
 
   const handlePost = () => {
     if (!origin || !destination) return alert("Please enter both origin and destination");
+    if (!pickupLandmark) return alert("Please specify a pickup landmark (e.g. Total Filling Station)");
+    
     setIsPosting(true);
     
     setTimeout(() => {
@@ -42,6 +46,8 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
         vehicle_name: `${profile.car_make} ${profile.car_model}`,
         origin: origin,
         destination: destination,
+        pickup_area: pickupArea,
+        pickup_landmark: pickupLandmark,
         route: `${origin} → ${destination}`,
         departure_time: depTime.toISOString(),
         price_per_seat: price,
@@ -128,6 +134,28 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
                 className="bg-transparent w-full font-black text-black outline-none placeholder:text-gray-300"
               />
             </div>
+          </div>
+        </div>
+
+        {/* Pickup Details */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Pickup Area</label>
+            <input 
+              placeholder="e.g. GRA"
+              value={pickupArea}
+              onChange={(e) => setPickupArea(e.target.value)}
+              className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-black outline-none placeholder:text-gray-300"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Pickup Landmark</label>
+            <input 
+              placeholder="e.g. Total Station"
+              value={pickupLandmark}
+              onChange={(e) => setPickupLandmark(e.target.value)}
+              className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-black outline-none placeholder:text-gray-300"
+            />
           </div>
         </div>
 

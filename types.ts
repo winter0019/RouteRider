@@ -11,7 +11,8 @@ export enum BookingStatus {
   ACCEPTED = 'accepted',
   REJECTED = 'rejected',
   NO_SHOW = 'no_show',
-  COMPLETED = 'completed'
+  COMPLETED = 'completed',
+  ESCROWED = 'escrowed'
 }
 
 export interface User {
@@ -39,6 +40,11 @@ export interface DriverProfile extends User {
   plate_number: string;
   wallet_balance: number;
   total_earnings: number;
+  bank_code?: string;
+  account_number?: string;
+  account_name?: string;
+  recipient_code?: string;
+  payout_enabled?: boolean;
 }
 
 export interface Trip {
@@ -49,6 +55,8 @@ export interface Trip {
   carOwnerId?: string; // For Firestore compatibility
   origin?: string;
   destination?: string;
+  origin_key?: string;
+  destination_key?: string;
   id?: string;
   source?: 'rides' | 'trips';
   time?: string;
@@ -62,6 +70,10 @@ export interface Trip {
   status: TripStatus;
   earnings: number;
   created_at: string;
+  expires_at?: string;
+  pickup_area?: string;
+  pickup_landmark?: string;
+  pickup_notes?: string;
 }
 
 export interface Booking {
