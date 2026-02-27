@@ -156,6 +156,10 @@ const USERS_COL = "users";
 const PAYMENT_INTENTS_COL = "payment_intents";
 const KYC_COL = "kyc_submissions";
 
+let ridesCache: any = null;
+let lastRidesFetch = 0;
+const RIDES_CACHE_TTL = 30000; // 30 seconds
+
 async function startServer() {
   const app = express();
   // Use process.env.PORT for production portability (e.g. Railway), 
@@ -738,8 +742,21 @@ async function requireFirebaseAuth(req: any, res: any, next: any) {
   // ------------------------------------------------------
   app.get("/api/rides", async (_req, res) => {
     try {
-      const ridesSnap = await db.collection(RIDES_COL).get();
-      const tripsSnap = await db.collection(TRIPS_COL).get();
+      const now = Date.now();
+      if (ridesCache && (now - lastRidesFetch < RIDES_CACHE_TTL)) {
+        return res.json(ridesCache);
+      }
+
+      // Optimize: Only fetch active/posted rides to save quota
+      const ridesSnap = await db.collection(RIDES_COL)
+        .where("status", "==", "posted")
+        .limit(50)
+        .get();
+        
+      const tripsSnap = await db.collection(TRIPS_COL)
+        .where("status", "==", "posted")
+        .limit(50)
+        .get();
 
       const rides = ridesSnap.docs.map((d) => ({
         id: d.id,
@@ -766,6 +783,10 @@ async function requireFirebaseAuth(req: any, res: any, next: any) {
       const all = [...rides, ...trips].sort(
         (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
+
+      // Update cache
+      ridesCache = all;
+      lastRidesFetch = now;
 
       res.json(all);
     } catch (err: any) {

@@ -2,7 +2,21 @@ import { GoogleGenAI } from "@google/genai";
 
 const getApiKey = () => {
   try {
-    return (typeof process !== 'undefined' && process.env?.API_KEY) ? process.env.API_KEY : '';
+    // 1. Try platform-standard GEMINI_API_KEY (process.env)
+    if (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) {
+      return process.env.GEMINI_API_KEY;
+    }
+    // 2. Try Vite-standard VITE_GEMINI_API_KEY (import.meta.env)
+    // @ts-ignore
+    if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) {
+      // @ts-ignore
+      return import.meta.env.VITE_GEMINI_API_KEY;
+    }
+    // 3. Fallback to API_KEY if set by user in other environments
+    if (typeof process !== 'undefined' && process.env?.API_KEY) {
+      return process.env.API_KEY;
+    }
+    return '';
   } catch {
     return '';
   }
@@ -92,8 +106,26 @@ export const verifyDocument = async (base64Image: string, docType: 'nin' | 'lice
       }
     });
 
-    const result = JSON.parse(response.text);
-    return result;
+    const text = response.text || "";
+    // Clean up the response text in case it contains markdown code blocks
+    const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    
+    try {
+      const result = JSON.parse(cleanedText);
+      return {
+        verified: !!result.verified,
+        confidence: Number(result.confidence || 0),
+        message: String(result.message || "Verification complete."),
+        extractedName: result.extractedName || null
+      };
+    } catch (parseError) {
+      console.error("JSON Parse Error:", parseError, "Original text:", text);
+      // Fallback if JSON parsing fails but we have a response
+      if (text.toLowerCase().includes('"verified": true')) {
+        return { verified: true, confidence: 0.8, message: "Verified (fallback parsing)" };
+      }
+      throw parseError;
+    }
   } catch (error) {
     console.error("Document verification error:", error);
     return { 

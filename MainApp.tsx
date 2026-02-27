@@ -44,6 +44,7 @@ const MainApp: React.FC = () => {
   const persistTrips = (trips: Trip[]) => {
     setAllAvailableTrips(trips);
     localStorage.setItem("rr_all_trips", JSON.stringify(trips));
+    localStorage.setItem("rr_trips_updated_at", Date.now().toString());
   };
 
   const persistActiveTrip = (trip: Trip | null) => {
@@ -107,8 +108,15 @@ const MainApp: React.FC = () => {
   // -------------------------
   // Firestore refresh (source of truth)
   // -------------------------
-  const refreshTripsFromBackend = useCallback(async () => {
+  const refreshTripsFromBackend = useCallback(async (force = false) => {
     try {
+      // Basic throttling to save Firestore quota
+      const lastUpdate = Number(localStorage.getItem("rr_trips_updated_at") || 0);
+      const now = Date.now();
+      if (!force && now - lastUpdate < 60000) { // Don't refresh more than once per minute unless forced
+        return;
+      }
+
       const backendTrips = await api.getTrips();
       persistTrips(backendTrips);
       setGlobalError(null);
@@ -349,7 +357,7 @@ const MainApp: React.FC = () => {
   useEffect(() => {
     if (userRole === 'driver' && activeTrip && isLoggedIn) {
       refreshBookingsFromBackend();
-      const interval = setInterval(refreshBookingsFromBackend, 30000); // Poll every 30s instead of 10s
+      const interval = setInterval(refreshBookingsFromBackend, 60000); // Poll every 60s
       return () => clearInterval(interval);
     }
   }, [userRole, !!activeTrip, isLoggedIn, refreshBookingsFromBackend]);
@@ -358,7 +366,7 @@ const MainApp: React.FC = () => {
   useEffect(() => {
     if (userRole === 'passenger' && isLoggedIn) {
       refreshUserBookingsFromBackend();
-      const interval = setInterval(refreshUserBookingsFromBackend, 30000); // Poll every 30s instead of 10s
+      const interval = setInterval(refreshUserBookingsFromBackend, 60000); // Poll every 60s
       return () => clearInterval(interval);
     }
   }, [userRole, isLoggedIn, refreshUserBookingsFromBackend]);
