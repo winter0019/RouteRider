@@ -891,233 +891,98 @@ async function requireFirebaseAuth(req: any, res: any, next: any) {
   });
 
   // ------------------------------------------------------
-// Me / Profile / KYC
-// ------------------------------------------------------
+  // Me / Profile / KYC
+  // ------------------------------------------------------
+  app.get("/api/me", requireFirebaseAuth, (req: any, res) => {
+    res.json({ uid: req.uid, user: req.user });
+  });
 
-app.get("/api/me", requireFirebaseAuth, (req: any, res) => {
-  res.json({ uid: req.uid, user: req.user });
-});
+  app.get("/api/users/profile", requireFirebaseAuth, async (req: any, res) => {
+    try {
+      const snap = await db.collection(USERS_COL).doc(req.uid).get();
+      if (!snap.exists) return res.status(404).json({ error: "Profile not found" });
+      res.json(snap.data());
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 
-app.get("/api/users/profile", requireFirebaseAuth, async (req: any, res) => {
-  try {
-    const snap = await db.collection(USERS_COL).doc(req.uid).get();
-    if (!snap.exists) return res.status(404).json({ error: "Profile not found" });
-    res.json({ id: snap.id, ...snap.data() });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post("/api/users/profile", requireFirebaseAuth, async (req: any, res) => {
-  try {
-    const data = req.body || {};
-    const userRef = db.collection(USERS_COL).doc(req.uid);
-    const userSnap = await userRef.get();
-
-    // ✅ Client must never be able to set these directly
-    const blocked = [
-      "kyc_status",
-      "name_locked",
-      "name_correction_used",
-      "verifiedAt",
-      "kyc_verified_at",
-      "kyc_reason",
-      "kyc_score",
-      "kyc_match",
-    ];
-    for (const k of blocked) delete data[k];
-
-    if (!userSnap.exists) {
-      // Initial profile creation
-      const userType = data.userType === "driver" ? "driver" : "passenger";
-
-      // ✅ Passenger can be auto-verified (optional policy)
-      // ✅ Driver must do KYC
-      const initialKycStatus = userType === "passenger" ? "verified" : "none";
-
-      await userRef.set(
-        {
+  app.post("/api/users/profile", requireFirebaseAuth, async (req: any, res) => {
+    try {
+      const data = req.body;
+      const userRef = db.collection(USERS_COL).doc(req.uid);
+      const userSnap = await userRef.get();
+      
+      if (!userSnap.exists) {
+        // Initial profile creation
+        // Passengers are auto-verified for now, drivers must go through KYC
+        const initialKycStatus = data.userType === 'passenger' ? 'verified' : 'none';
+        
+        await userRef.set({
           ...data,
-          uid: req.uid,
-          userType,
           kyc_status: initialKycStatus,
-          name_locked: userType === "passenger", // passenger name locked since auto-verified
+          name_locked: data.userType === 'passenger', // Passengers names are locked if they are verified
           name_correction_used: false,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      return res.json({ ok: true });
-    }
-
-    const userData = userSnap.data() as any;
-
-    const updates: any = {
-      ...data,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    };
-
-    // ✅ Name locking enforcement (one-time correction)
-    // Only allow full_name change if:
-    // - name is locked AND correction not used yet
-    // - OR name not locked
-    if (typeof data.full_name === "string" && data.full_name.trim()) {
-      const newName = data.full_name.trim();
-
-      if (userData.name_locked) {
-        if (newName !== userData.full_name) {
-          if (userData.name_correction_used) {
-            return res
-              .status(403)
-              .json({ error: "Name is locked and correction has already been used." });
-          }
-          updates.name_correction_used = true;
-        }
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        return res.json({ ok: true });
       }
+
+      const userData = userSnap.data() as any;
+      
+      // Prevent client from overriding sensitive fields
+      const { kyc_status, name_locked, name_correction_used, ...safeData } = data;
+      const updates: any = { ...safeData, updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+
+      // Name Locking Logic
+      if (userData.name_locked && data.full_name && data.full_name !== userData.full_name) {
+        // Check if one-time correction is available
+        if (userData.name_correction_used) {
+          return res.status(403).json({ error: "Name is locked and correction has already been used." });
+        }
+        // Allow one-time correction
+        updates.name_correction_used = true;
+        console.log(`User ${req.uid} used their one-time name correction.`);
+      }
+
+      await userRef.update(updates);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
+  });
 
-    await userRef.update(updates);
-    res.json({ ok: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ------------------------------------------------------
-// KYC: submit -> PENDING only (NO auto-verify here)
-// ------------------------------------------------------
-app.post("/api/kyc/submit", requireFirebaseAuth, async (req: any, res) => {
-  try {
-    const data = req.body || {};
-    const uid = req.uid;
-
-    // ✅ store submission (always PENDING)
-    const submission = {
-      ...data,
-      uid,
-      status: "pending", // ✅ consistent
-      reason: null,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    };
-
-    await db.collection(KYC_COL).doc(uid).set(submission, { merge: true });
-
-    // ✅ set user to pending (FAIL-CLOSED)
-    await db.collection(USERS_COL).doc(uid).set(
-      {
-        kyc_status: "pending",
-        kyc_reason: null,
+  app.post("/api/kyc/submit", requireFirebaseAuth, async (req: any, res) => {
+    try {
+      const data = req.body;
+      const submission = {
+        ...data,
+        uid: req.uid,
+        status: "submitted",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
+      };
 
-    // ✅ DO NOT mark verified here
-    res.json({ ok: true, kyc_status: "pending" });
-  } catch (err: any) {
-    console.error("KYC Submit Error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
+      await db.collection(KYC_COL).doc(req.uid).set(submission);
 
-// ------------------------------------------------------
-// KYC: verify -> this is where VERIFIED is set
-// (For MVP you can "simulate" AI here but still must be strict)
-// ------------------------------------------------------
-app.post("/api/kyc/verify", requireFirebaseAuth, async (req: any, res) => {
-  const uid = req.uid;
-
-  try {
-    const kycSnap = await db.collection(KYC_COL).doc(uid).get();
-    if (!kycSnap.exists) return res.status(400).json({ error: "No KYC submission found" });
-
-    const kyc = kycSnap.data() as any;
-
-    // ✅ Adjust these fields to match what your frontend sends/stores
-    const extractedName = String(kyc.extractedName || kyc.extracted_name || "").trim();
-    const selfieMatch = kyc.selfieMatch === true || kyc.selfie_match === true; // boolean
-    const docValid = Boolean(kyc.documentUrl || kyc.document_url || kyc.documentBase64 || kyc.document_base64);
-
-    const fail = async (reason: string, httpStatus = 400) => {
-      await db.collection(USERS_COL).doc(uid).set(
-        {
-          kyc_status: "failed",
-          kyc_reason: reason,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      await db.collection(KYC_COL).doc(uid).set(
-        {
-          status: "failed",
-          reason,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      return res.status(httpStatus).json({ error: reason });
-    };
-
-    // ✅ FAIL-CLOSED checks
-    if (!docValid) return fail("Missing document");
-    if (!extractedName) return fail("Name extraction failed");
-    if (!selfieMatch) return fail("Selfie mismatch");
-
-    // ✅ VERIFIED (only here)
-    await db.collection(USERS_COL).doc(uid).set(
-      {
-        kyc_status: "verified",
-        kyc_reason: null,
+      // Simulate automatic extraction and verification for demo/MVP purposes
+      // In a real app, this would be handled by a background worker or manual review
+      const extractedName = data.extractedName || data.full_name; 
+      
+      await db.collection(USERS_COL).doc(req.uid).set({ 
+        kyc_status: "verified", // Auto-verify for MVP
         full_name: extractedName,
         name_locked: true,
-        verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
+        name_correction_used: false,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
 
-    await db.collection(KYC_COL).doc(uid).set(
-      {
-        status: "verified",
-        reason: null,
-        verifiedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    res.json({ ok: true, kyc_status: "verified", full_name: extractedName });
-  } catch (err: any) {
-    console.error("KYC Verify Error:", err);
-
-    // ✅ fail-closed on unexpected errors too
-    await db.collection(USERS_COL).doc(uid).set(
-      {
-        kyc_status: "failed",
-        kyc_reason: err.message || "Verification error",
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    await db.collection(KYC_COL).doc(uid).set(
-      {
-        status: "failed",
-        reason: err.message || "Verification error",
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    res.status(500).json({ error: err.message });
-  }
-});
-
+      res.json({ ok: true, kyc_status: "verified", full_name: extractedName });
+    } catch (err: any) {
+      console.error("KYC Submit Error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
 
   // ------------------------------------------------------
   // Wallet
