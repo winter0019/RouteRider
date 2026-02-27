@@ -31,6 +31,7 @@ export interface User {
   };
   rating: number;
   trip_count: number;
+  isAdmin?: boolean;
 }
 
 export interface DriverProfile extends User {

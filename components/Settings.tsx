@@ -158,6 +158,22 @@ const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate, us
         <section className="space-y-2">
           <h3 className="px-1 text-[10px] font-black text-gray-400 uppercase tracking-widest">Account Details</h3>
           <div className="bg-white border-2 border-slate-100 rounded-3xl overflow-hidden shadow-sm">
+            {profile.isAdmin && (
+              <button 
+                onClick={() => window.location.href = "/admin"}
+                className="w-full p-4 border-b border-slate-100 flex justify-between items-center bg-indigo-50 hover:bg-indigo-100 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-indigo-600 rounded-xl flex items-center justify-center text-white">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                  </div>
+                  <span className="font-black text-sm text-indigo-900 uppercase">Admin Dashboard</span>
+                </div>
+                <div className="text-indigo-300">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="9 18 15 12 9 6"/></svg>
+                </div>
+              </button>
+            )}
             {isDriver && (
               <>
                 <div className="p-4 border-b border-slate-100 flex justify-between">

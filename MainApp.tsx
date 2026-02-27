@@ -129,7 +129,7 @@ const MainApp: React.FC = () => {
   }, []);
 
   const refreshBookingsFromBackend = useCallback(async () => {
-    if (!activeTrip) return;
+    if (!activeTrip || !auth?.currentUser) return;
     try {
       // 1. Refresh bookings
       const backendBookings = await api.getBookingsForTrip(activeTrip.trip_id);
@@ -143,6 +143,7 @@ const MainApp: React.FC = () => {
 
       setGlobalError(null);
     } catch (error: any) {
+      if (error.message === "Not authenticated" || error.name === "TypeError") return;
       console.error("Failed to refresh bookings:", error);
       if (error.code === 'permission-denied') {
         setGlobalError("Firestore Permission Denied. Please update your Security Rules.");
@@ -151,28 +152,30 @@ const MainApp: React.FC = () => {
   }, [activeTrip]);
 
   const refreshUserBookingsFromBackend = useCallback(async () => {
-    if (!profile?.user_id) return;
+    if (!profile?.user_id || !auth?.currentUser) return;
     try {
       const backendBookings = await api.getBookingsForUser(profile.user_id);
       persistBookings(backendBookings);
       setGlobalError(null);
     } catch (error: any) {
+      if (error.message === "Not authenticated" || error.name === "TypeError") return;
       console.error("Failed to refresh user bookings:", error);
     }
   }, [profile?.user_id]);
 
   const refreshTransactionsFromBackend = useCallback(async () => {
-    if (!profile?.user_id) return;
+    if (!profile?.user_id || !auth?.currentUser) return;
     try {
       const tx = await api.getTransactions(profile.user_id);
       persistTransactions(tx);
-    } catch (error) {
+    } catch (error: any) {
+      if (error.message === "Not authenticated" || error.name === "TypeError") return;
       console.error("Failed to refresh transactions:", error);
     }
   }, [profile?.user_id]);
 
   const refreshWalletFromBackend = useCallback(async () => {
-    if (!profile?.user_id) return;
+    if (!profile?.user_id || !auth?.currentUser) return;
     try {
       const wallet = await api.getMyWallet();
       if (wallet && typeof wallet.balance === 'number') {
@@ -180,13 +183,14 @@ const MainApp: React.FC = () => {
         setProfile(updatedProfile);
         localStorage.setItem("rr_profile", JSON.stringify(updatedProfile));
       }
-    } catch (error) {
+    } catch (error: any) {
+      if (error.message === "Not authenticated" || error.name === "TypeError") return;
       console.error("Failed to refresh wallet:", error);
     }
   }, [profile]);
 
   const refreshProfileFromBackend = useCallback(async () => {
-    if (!profile?.user_id) return;
+    if (!profile?.user_id || !auth?.currentUser) return;
     try {
       const firestoreProfile = await firestoreService.getUserProfile(profile.user_id);
       if (firestoreProfile) {
@@ -207,6 +211,7 @@ const MainApp: React.FC = () => {
           wallet_balance: firestoreProfile.wallet_balance || 0,
           total_earnings: firestoreProfile.total_earnings || 0,
           profile_photo_url: firestoreProfile.profile_photo_url,
+          isAdmin: !!firestoreProfile.isAdmin,
           bank_name: firestoreProfile.bank_details?.bank_name,
           bank_code: firestoreProfile.bank_details?.bank_code,
           account_number: firestoreProfile.bank_details?.account_number,
@@ -218,6 +223,7 @@ const MainApp: React.FC = () => {
         localStorage.setItem("rr_profile", JSON.stringify(p));
       }
     } catch (error: any) {
+      if (error.message === "Not authenticated" || error.name === "TypeError") return;
       if (error.message === "Profile not found") {
         console.log("Profile not found during refresh, logging out.");
         handleLogout();
@@ -319,6 +325,7 @@ const MainApp: React.FC = () => {
                 wallet_balance: firestoreProfile.wallet_balance || 0,
                 total_earnings: firestoreProfile.total_earnings || 0,
                 profile_photo_url: firestoreProfile.profile_photo_url,
+                isAdmin: !!firestoreProfile.isAdmin,
                 bank_name: firestoreProfile.bank_details?.bank_name,
                 bank_code: firestoreProfile.bank_details?.bank_code,
                 account_number: firestoreProfile.bank_details?.account_number,

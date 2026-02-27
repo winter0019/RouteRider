@@ -795,6 +795,130 @@ async function requireFirebaseAuth(req: any, res: any, next: any) {
   });
 
   // ------------------------------------------------------
+  // Admin Monitoring & Dispute Settlement
+  // ------------------------------------------------------
+  app.get("/api/admin/trips", requireFirebaseAuth, requireAdmin, async (req, res) => {
+    try {
+      const ridesSnap = await db.collection(RIDES_COL).orderBy("createdAt", "desc").limit(100).get();
+      const tripsSnap = await db.collection(TRIPS_COL).orderBy("createdAt", "desc").limit(100).get();
+      
+      const rides = ridesSnap.docs.map(d => ({ id: d.id, source: "rides", ...d.data() }));
+      const trips = tripsSnap.docs.map(d => ({ id: d.id, source: "trips", ...d.data() }));
+      
+      const combined = [...rides, ...trips].sort((a: any, b: any) => {
+        const dateA = a.createdAt?.toDate?.()?.getTime() || 0;
+        const dateB = b.createdAt?.toDate?.()?.getTime() || 0;
+        return dateB - dateA;
+      });
+
+      res.json(combined);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/admin/trips/:tripId/settle", requireFirebaseAuth, requireAdmin, async (req: any, res) => {
+    const { tripId } = req.params;
+    const { source } = req.body || {};
+    const col = source === "trips" ? TRIPS_COL : RIDES_COL;
+
+    try {
+      const tripRef = db.collection(col).doc(tripId);
+      const tripSnap = await tripRef.get();
+      if (!tripSnap.exists) return res.status(404).json({ error: "Trip not found" });
+      
+      const tripData: any = tripSnap.data();
+      const driverUid = tripData.driver_id || tripData.carOwnerId;
+
+      const bookingsSnap = await db.collection(BOOKINGS_COL).where("trip_id", "==", tripId).get();
+      const releasable = bookingsSnap.docs.filter(d => ["escrowed", "accepted", "confirmed"].includes(d.data().status));
+
+      for (const d of releasable) {
+        const bookingId = d.id;
+        await db.runTransaction(async (tx) => {
+          const bookingRef = db.collection(BOOKINGS_COL).doc(bookingId);
+          const bSnap = await tx.get(bookingRef);
+          if (!bSnap.exists) return;
+          const booking: any = bSnap.data();
+
+          const escrowRef = db.collection(ESCROWS_COL).doc(bookingId);
+          const eSnap = await tx.get(escrowRef);
+          if (!eSnap.exists || eSnap.data()?.status !== "held") return;
+
+          const netKobo = Number(booking.netToDriverKobo || booking.amountKobo || 0);
+          
+          const walletRef = db.collection(WALLETS_COL).doc(driverUid);
+          const wSnap = await tx.get(walletRef);
+          const currentKobo = wSnap.exists ? Number(wSnap.data()?.balanceKobo || 0) : 0;
+          
+          tx.set(walletRef, { 
+            balanceKobo: currentKobo + netKobo,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+
+          tx.update(bookingRef, { status: "completed", settledBy: "admin", updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+          tx.update(escrowRef, { status: "released", releasedAt: admin.firestore.FieldValue.serverTimestamp() });
+        });
+      }
+
+      await tripRef.update({ status: "completed", settledBy: "admin", updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+      res.json({ ok: true, message: "Trip manually settled by admin" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/admin/trips/:tripId/cancel", requireFirebaseAuth, requireAdmin, async (req: any, res) => {
+    const { tripId } = req.params;
+    const { source } = req.body || {};
+    const col = source === "trips" ? TRIPS_COL : RIDES_COL;
+
+    try {
+      const tripRef = db.collection(col).doc(tripId);
+      const tripSnap = await tripRef.get();
+      if (!tripSnap.exists) return res.status(404).json({ error: "Trip not found" });
+
+      const bookingsSnap = await db.collection(BOOKINGS_COL).where("trip_id", "==", tripId).get();
+      
+      for (const d of bookingsSnap.docs) {
+        const bookingId = d.id;
+        const booking: any = d.data();
+        const passengerUid = booking.passenger_id;
+
+        await db.runTransaction(async (tx) => {
+          const escrowRef = db.collection(ESCROWS_COL).doc(bookingId);
+          const eSnap = await tx.get(escrowRef);
+          
+          if (eSnap.exists && eSnap.data()?.status === "held") {
+            const amountKobo = Number(booking.amountKobo || 0);
+            const walletRef = db.collection(WALLETS_COL).doc(passengerUid);
+            const wSnap = await tx.get(walletRef);
+            const currentKobo = wSnap.exists ? Number(wSnap.data()?.balanceKobo || 0) : 0;
+
+            tx.set(walletRef, { 
+              balanceKobo: currentKobo + amountKobo,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+
+            tx.update(escrowRef, { status: "refunded", cancelledBy: "admin", updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+          }
+          
+          tx.update(db.collection(BOOKINGS_COL).doc(bookingId), { 
+            status: "cancelled", 
+            cancelledBy: "admin", 
+            updatedAt: admin.firestore.FieldValue.serverTimestamp() 
+          });
+        });
+      }
+
+      await tripRef.update({ status: "cancelled", cancelledBy: "admin", updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+      res.json({ ok: true, message: "Trip manually cancelled and refunded by admin" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ------------------------------------------------------
   // Rides / Trips
   // ------------------------------------------------------
   app.get("/api/rides/search", async (req, res) => {
