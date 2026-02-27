@@ -803,12 +803,10 @@ async function requireFirebaseAuth(req: any, res: any, next: any) {
       const now = admin.firestore.Timestamp.now();
 
       let qRides = db.collection(RIDES_COL)
-        .where("status", "==", "posted")
-        .where("expiresAt", ">", now);
+        .where("status", "==", "posted");
 
       let qTrips = db.collection(TRIPS_COL)
-        .where("status", "==", "posted")
-        .where("expiresAt", ">", now);
+        .where("status", "==", "posted");
 
       if (origin) {
         const ok = origin.toLowerCase().trim();
@@ -823,8 +821,14 @@ async function requireFirebaseAuth(req: any, res: any, next: any) {
 
       const [ridesSnap, tripsSnap] = await Promise.all([qRides.get(), qTrips.get()]);
 
-      const rides = ridesSnap.docs.map(d => ({ id: d.id, trip_id: d.id, source: "rides", ...d.data() }));
-      const trips = tripsSnap.docs.map(d => ({ id: d.id, trip_id: d.id, source: "trips", ...d.data() }));
+      const nowMillis = Date.now();
+      const rides = ridesSnap.docs
+        .map(d => ({ id: d.id, trip_id: d.id, source: "rides", ...d.data() as any }))
+        .filter(r => !r.expiresAt || r.expiresAt.toMillis() > nowMillis);
+        
+      const trips = tripsSnap.docs
+        .map(d => ({ id: d.id, trip_id: d.id, source: "trips", ...d.data() as any }))
+        .filter(t => !t.expiresAt || t.expiresAt.toMillis() > nowMillis);
 
       let combined = [...rides, ...trips];
 

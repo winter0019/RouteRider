@@ -207,7 +207,12 @@ const MainApp: React.FC = () => {
           wallet_balance: firestoreProfile.wallet_balance || 0,
           total_earnings: firestoreProfile.total_earnings || 0,
           profile_photo_url: firestoreProfile.profile_photo_url,
-          bank_details: firestoreProfile.bank_details
+          bank_name: firestoreProfile.bank_details?.bank_name,
+          bank_code: firestoreProfile.bank_details?.bank_code,
+          account_number: firestoreProfile.bank_details?.account_number,
+          account_name: firestoreProfile.bank_details?.account_name,
+          recipient_code: firestoreProfile.bank_details?.recipient_code,
+          payout_enabled: !!firestoreProfile.bank_details?.recipient_code
         } as any;
         setProfile(p);
         localStorage.setItem("rr_profile", JSON.stringify(p));
@@ -313,7 +318,13 @@ const MainApp: React.FC = () => {
                 trip_count: firestoreProfile.trip_count || 0,
                 wallet_balance: firestoreProfile.wallet_balance || 0,
                 total_earnings: firestoreProfile.total_earnings || 0,
-                profile_photo_url: firestoreProfile.profile_photo_url
+                profile_photo_url: firestoreProfile.profile_photo_url,
+                bank_name: firestoreProfile.bank_details?.bank_name,
+                bank_code: firestoreProfile.bank_details?.bank_code,
+                account_number: firestoreProfile.bank_details?.account_number,
+                account_name: firestoreProfile.bank_details?.account_name,
+                recipient_code: firestoreProfile.bank_details?.recipient_code,
+                payout_enabled: !!firestoreProfile.bank_details?.recipient_code
               };
               const role = (firestoreProfile.userType || 'passenger') as UserRole;
               

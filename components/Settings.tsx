@@ -3,6 +3,7 @@ import React, { useState, useRef } from 'react';
 import { DriverProfile } from '../types';
 import { ICONS, COLORS } from '../constants';
 import { api } from '../services/api';
+import BankAccountSetup from './BankAccountSetup';
 
 interface SettingsProps {
   profile: DriverProfile;
@@ -14,6 +15,7 @@ interface SettingsProps {
 const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate, userRole }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [showBankSetup, setShowBankSetup] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [editData, setEditData] = useState({
     full_name: profile.full_name,
@@ -166,6 +168,22 @@ const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate, us
                   <span className="text-gray-500 font-bold text-sm">Plate</span>
                   <span className="font-black text-sm">{profile.plate_number}</span>
                 </div>
+                <button 
+                  onClick={() => setShowBankSetup(true)}
+                  className="w-full p-4 border-b border-slate-100 flex justify-between items-center hover:bg-slate-50 transition-colors"
+                >
+                  <div className="flex flex-col items-start">
+                    <span className="text-gray-500 font-bold text-sm">Bank Payouts</span>
+                    {profile.bank_name ? (
+                      <span className="text-[10px] text-emerald-600 font-black uppercase">{profile.bank_name} • {profile.account_number}</span>
+                    ) : (
+                      <span className="text-[10px] text-amber-600 font-black uppercase italic">Not Linked</span>
+                    )}
+                  </div>
+                  <div className="text-slate-300">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="9 18 15 12 9 6"/></svg>
+                  </div>
+                </button>
               </>
             )}
             <div className="p-4 flex justify-between">
@@ -174,6 +192,21 @@ const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate, us
             </div>
           </div>
         </section>
+
+        {showBankSetup && (
+          <BankAccountSetup 
+            onSuccess={() => {
+              setShowBankSetup(false);
+              // Refresh profile if needed, but onUpdate usually handles parent state
+              if (onUpdate) {
+                api.getMe().then(res => {
+                  if (res.profile) onUpdate(res.profile);
+                });
+              }
+            }}
+            onCancel={() => setShowBankSetup(false)}
+          />
+        )}
 
         <section className="space-y-2">
           <h3 className="px-1 text-[10px] font-black text-gray-400 uppercase tracking-widest">Debug Tools</h3>

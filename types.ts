@@ -40,6 +40,7 @@ export interface DriverProfile extends User {
   plate_number: string;
   wallet_balance: number;
   total_earnings: number;
+  bank_name?: string;
   bank_code?: string;
   account_number?: string;
   account_name?: string;
