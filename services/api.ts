@@ -392,4 +392,11 @@ export const api = {
   async completeTrip(tripId: string) {
     return authedFetch(`/trips/${tripId}/complete`, { method: "POST" });
   },
+
+  async registerPushToken(token: string) {
+    return authedFetch("/notifications/register-token", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    });
+  },
 };

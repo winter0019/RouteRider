@@ -32,6 +32,7 @@ export interface User {
   rating: number;
   trip_count: number;
   isAdmin?: boolean;
+  fcmToken?: string;
 }
 
 export interface DriverProfile extends User {
@@ -47,6 +48,8 @@ export interface DriverProfile extends User {
   account_name?: string;
   recipient_code?: string;
   payout_enabled?: boolean;
+  preferred_routes?: string[];
+  preferred_areas?: string[];
 }
 
 export interface Trip {

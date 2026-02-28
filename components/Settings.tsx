@@ -22,7 +22,9 @@ const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate, us
     car_make: profile.car_make,
     car_model: profile.car_model,
     plate_number: profile.plate_number,
-    profile_photo_url: profile.profile_photo_url
+    profile_photo_url: profile.profile_photo_url,
+    preferred_routes: profile.preferred_routes || [],
+    preferred_areas: profile.preferred_areas || []
   });
 
   const handleSave = () => {
@@ -135,6 +137,26 @@ const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate, us
                   <label className="text-[10px] font-black text-gray-400 uppercase">Plate Number</label>
                   <input value={editData.plate_number} onChange={e => setEditData({...editData, plate_number: e.target.value})} className="w-full p-3 bg-slate-50 rounded-xl font-black" />
                 </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-gray-400 uppercase">Preferred Routes (comma separated)</label>
+                  <input 
+                    value={editData.preferred_routes.join(', ')} 
+                    onChange={e => setEditData({...editData, preferred_routes: e.target.value.split(',').map(s => s.trim()).filter(Boolean)})} 
+                    placeholder="e.g. Daura, Katsina, Kano"
+                    className="w-full p-3 bg-slate-50 rounded-xl font-black" 
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-gray-400 uppercase">Preferred Areas (comma separated)</label>
+                  <input 
+                    value={editData.preferred_areas.join(', ')} 
+                    onChange={e => setEditData({...editData, preferred_areas: e.target.value.split(',').map(s => s.trim()).filter(Boolean)})} 
+                    placeholder="e.g. GRA, Central, Market"
+                    className="w-full p-3 bg-slate-50 rounded-xl font-black" 
+                  />
+                </div>
               </>
             )}
           </div>
@@ -183,6 +205,20 @@ const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate, us
                 <div className="p-4 border-b border-slate-100 flex justify-between">
                   <span className="text-gray-500 font-bold text-sm">Plate</span>
                   <span className="font-black text-sm">{profile.plate_number}</span>
+                </div>
+                <div className="p-4 border-b border-slate-100 flex flex-col gap-1">
+                  <span className="text-gray-500 font-bold text-sm">Notification Preferences</span>
+                  <div className="flex flex-wrap gap-1">
+                    {profile.preferred_routes?.map(r => (
+                      <span key={r} className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[9px] font-black uppercase rounded border border-emerald-100">{r}</span>
+                    ))}
+                    {profile.preferred_areas?.map(a => (
+                      <span key={a} className="px-2 py-0.5 bg-amber-50 text-amber-700 text-[9px] font-black uppercase rounded border border-amber-100">{a}</span>
+                    ))}
+                    {(!profile.preferred_routes?.length && !profile.preferred_areas?.length) && (
+                      <span className="text-[9px] text-gray-400 italic">No preferences set</span>
+                    )}
+                  </div>
                 </div>
                 <button 
                   onClick={() => setShowBankSetup(true)}

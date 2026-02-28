@@ -87,6 +87,14 @@ const MainApp: React.FC = () => {
   // -------------------------
   // Logout
   // -------------------------
+  useEffect(() => {
+    if (isLoggedIn && profile) {
+      // Simulate FCM token registration
+      const mockToken = `mock_fcm_${profile.user_id}`;
+      api.registerPushToken(mockToken).catch(err => console.error("FCM Registration Failed:", err));
+    }
+  }, [isLoggedIn, profile]);
+
   const handleLogout = useCallback(() => {
     localStorage.removeItem("rr_profile");
     localStorage.removeItem("rr_role");

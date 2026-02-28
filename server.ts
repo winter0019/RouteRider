@@ -213,6 +213,70 @@ async function initiatePaystackTransfer(params: {
   return data.data;
 }
 
+async function processPayout(bookingId: string, driverUid: string, netToDriverKobo: number, tripId: string) {
+  const bookingRef = db.collection(BOOKINGS_COL).doc(bookingId);
+  const escrowRef = db.collection(ESCROWS_COL).doc(bookingId);
+  const driverSnap = await db.collection(USERS_COL).doc(driverUid).get();
+  const driverData = driverSnap.data() as any;
+  const recipientCode = driverData?.bank_details?.recipient_code || driverData?.recipient_code;
+
+  // 1. Mark as processing
+  await bookingRef.update({ status: "processing_payout", updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+
+  try {
+    if (recipientCode) {
+      // 2. Initiate Paystack Transfer
+      await initiatePaystackTransfer({
+        amountKobo: netToDriverKobo,
+        recipient: recipientCode,
+        reason: `RouteRider Payout for Booking #${bookingId}`,
+        reference: `payout_${bookingId}_${Date.now()}`
+      });
+    } else {
+      console.warn(`Driver ${driverUid} has no bank account. Crediting wallet instead.`);
+      const netToDriverNaira = netToDriverKobo / 100;
+      await db.collection(WALLETS_COL).doc(driverUid).set({
+        uid: driverUid,
+        balanceKobo: admin.firestore.FieldValue.increment(netToDriverKobo),
+        balance: admin.firestore.FieldValue.increment(netToDriverNaira),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+
+    // 3. Update Firestore
+    const batch = db.batch();
+    batch.update(bookingRef, {
+      status: "completed",
+      completedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    batch.update(escrowRef, {
+      status: "released",
+      releasedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    
+    const txRef = db.collection(TX_COL).doc(`payout_${bookingId}`);
+    batch.set(txRef, {
+      user_id: driverUid,
+      uid: driverUid,
+      type: recipientCode ? 'withdrawal' : 'escrow_release',
+      amount: netToDriverKobo / 100,
+      amountKobo: netToDriverKobo,
+      status: "success",
+      bookingId,
+      trip_id: tripId,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    await batch.commit();
+    return true;
+  } catch (err: any) {
+    console.error(`Payout failed for booking ${bookingId}:`, err);
+    await bookingRef.update({ status: "payout_failed", payoutError: err.message, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+    return false;
+  }
+}
+
 let ridesCache: any = null;
 let lastRidesFetch = 0;
 const RIDES_CACHE_TTL = 30000; // 30 seconds
@@ -835,30 +899,11 @@ async function requireFirebaseAuth(req: any, res: any, next: any) {
 
       for (const d of releasable) {
         const bookingId = d.id;
-        await db.runTransaction(async (tx) => {
-          const bookingRef = db.collection(BOOKINGS_COL).doc(bookingId);
-          const bSnap = await tx.get(bookingRef);
-          if (!bSnap.exists) return;
-          const booking: any = bSnap.data();
-
-          const escrowRef = db.collection(ESCROWS_COL).doc(bookingId);
-          const eSnap = await tx.get(escrowRef);
-          if (!eSnap.exists || eSnap.data()?.status !== "held") return;
-
-          const netKobo = Number(booking.netToDriverKobo || booking.amountKobo || 0);
-          
-          const walletRef = db.collection(WALLETS_COL).doc(driverUid);
-          const wSnap = await tx.get(walletRef);
-          const currentKobo = wSnap.exists ? Number(wSnap.data()?.balanceKobo || 0) : 0;
-          
-          tx.set(walletRef, { 
-            balanceKobo: currentKobo + netKobo,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-          }, { merge: true });
-
-          tx.update(bookingRef, { status: "completed", settledBy: "admin", updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-          tx.update(escrowRef, { status: "released", releasedAt: admin.firestore.FieldValue.serverTimestamp() });
-        });
+        const booking: any = d.data();
+        const netKobo = Number(booking.netToDriverKobo || booking.amountKobo || 0);
+        if (netKobo > 0) {
+          await processPayout(bookingId, driverUid, netKobo, tripId);
+        }
       }
 
       await tripRef.update({ status: "completed", settledBy: "admin", updatedAt: admin.firestore.FieldValue.serverTimestamp() });
@@ -1056,6 +1101,10 @@ async function requireFirebaseAuth(req: any, res: any, next: any) {
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
       });
+
+      // Notify drivers in background
+      notifyDriversOfNewRide({ id: ref.id, ...tripData }).catch(console.error);
+
       res.json({ id: ref.id, ...tripData });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -1710,59 +1759,19 @@ app.post("/api/bookings/:bookingId/complete", requireFirebaseAuth, async (req: a
     const driverSnap = await db.collection(USERS_COL).doc(driverUid).get();
     const driverData = driverSnap.data() as any;
 
-    if (!driverData?.recipient_code) {
+    const recipientCode = driverData?.bank_details?.recipient_code || driverData?.recipient_code;
+
+    if (!recipientCode) {
       throw new Error("Driver has no bank account configured for payouts.");
     }
 
     const netToDriverKobo = Number(booking.netToDriverKobo || booking.amountKobo || 0);
     if (netToDriverKobo <= 0) throw new Error("Booking has 0 netToDriverKobo/amountKobo");
 
-    // 1. Mark as processing to prevent double payout
-    await bookingRef.update({ status: "processing_payout" });
+    const success = await processPayout(bookingId, driverUid, netToDriverKobo, booking.trip_id);
+    if (!success) throw new Error("Payout processing failed");
 
-    try {
-      // 2. Initiate Paystack Transfer
-      await initiatePaystackTransfer({
-        amountKobo: netToDriverKobo,
-        recipient: driverData.recipient_code,
-        reason: `RouteRider Payout for Booking #${bookingId}`,
-        reference: `payout_${bookingId}_${Date.now()}`
-      });
-
-      // 3. Update Firestore
-      const batch = db.batch();
-      batch.update(bookingRef, {
-        status: "completed",
-        completedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-      batch.update(escrowRef, {
-        status: "released",
-        releasedAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-      
-      // Log transaction for history
-      const txRef = db.collection(TX_COL).doc(`payout_${bookingId}`);
-      batch.set(txRef, {
-        user_id: driverUid,
-        uid: driverUid,
-        type: 'withdrawal',
-        amount: netToDriverKobo / 100,
-        amountKobo: netToDriverKobo,
-        description: `Direct bank payout for booking #${bookingId}`,
-        status: 'success',
-        booking_id: bookingId,
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
-      });
-
-      await batch.commit();
-      res.json({ ok: true, message: "Payout successful" });
-    } catch (transferErr: any) {
-      console.error("Payout Transfer Error:", transferErr);
-      await bookingRef.update({ status: "escrowed", payout_error: transferErr.message });
-      res.status(500).json({ error: `Payout failed: ${transferErr.message}. Please try again.` });
-    }
+    res.json({ ok: true, message: "Booking completed and payout initiated" });
   } catch (err: any) {
     console.error("Complete Booking Error:", err);
     return res.status(400).json({ error: err.message || "Failed to complete booking" });
@@ -1777,127 +1786,32 @@ app.post("/api/trips/:tripId/complete", requireFirebaseAuth, async (req: any, re
   const uid = req.uid;
 
   try {
-    const owns = await assertDriverOwnsTrip(tripId, uid);
-    if (!owns) return res.status(403).json({ error: "Unauthorized (not trip driver)" });
-
-    // Get all bookings for trip (then filter in code to avoid Firestore 'in' limitations surprises)
     const snap = await db.collection(BOOKINGS_COL).where("trip_id", "==", tripId).get();
-
-    const releasable = snap.docs.filter((d) => {
-      const b: any = d.data();
-      return ["escrowed", "accepted", "confirmed"].includes(b.status);
-    });
+    const releasable = snap.docs.filter((d) => ["escrowed", "accepted", "confirmed"].includes(d.data().status));
 
     let releasedCount = 0;
-    let totalCreditedKobo = 0;
     const releasedBookingIds: string[] = [];
 
     for (const d of releasable) {
       const bookingId = d.id;
+      const booking: any = d.data();
+      const driverUid = booking.driver_id || booking.driverId;
+      if (driverUid !== uid) continue;
 
-      const creditedKobo = await db.runTransaction(async (tx) => {
-        const bookingRef = db.collection(BOOKINGS_COL).doc(bookingId);
-        const bookingSnap = await tx.get(bookingRef);
-        if (!bookingSnap.exists) return 0;
-
-        const booking: any = bookingSnap.data();
-
-        const driverUid = booking.driver_id || booking.driverId;
-        if (!driverUid) return 0;
-        if (driverUid !== uid) throw new Error("Unauthorized booking driver mismatch");
-
-        if (!["escrowed", "accepted", "confirmed"].includes(booking.status)) return 0;
-
-        const escrowRef = db.collection(ESCROWS_COL).doc(bookingId);
-        const escrowSnap = await tx.get(escrowRef);
-        if (!escrowSnap.exists) return 0;
-
-        const escrow: any = escrowSnap.data();
-        if (escrow.status !== "held") return 0;
-
-        const netToDriverKobo = Number(booking.netToDriverKobo || booking.amountKobo || 0);
-        if (netToDriverKobo <= 0) return 0;
-
-        const netToDriverNaira = netToDriverKobo / 100;
-
-        // Credit driver wallet
-        tx.set(
-          db.collection(WALLETS_COL).doc(driverUid),
-          {
-            uid: driverUid,
-            balanceKobo: admin.firestore.FieldValue.increment(netToDriverKobo),
-            balance: admin.firestore.FieldValue.increment(netToDriverNaira),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-
-        // Optional mirror
-        tx.set(
-          db.collection(USERS_COL).doc(driverUid),
-          {
-            wallet_balance: admin.firestore.FieldValue.increment(netToDriverNaira),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
-
-        tx.update(bookingRef, {
-          status: "completed",
-          completedAt: admin.firestore.FieldValue.serverTimestamp(),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-
-        tx.update(escrowRef, {
-          status: "released",
-          releasedAt: admin.firestore.FieldValue.serverTimestamp(),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-
-        tx.set(db.collection(TX_COL).doc(`escrow_release_${bookingId}`), {
-          user_id: driverUid,
-          uid: driverUid,
-          type: "escrow_release",
-          amount: netToDriverNaira,
-          amountKobo: netToDriverKobo,
-          status: "success",
-          bookingId,
-          trip_id: tripId,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-
-        return netToDriverKobo;
-      });
-
-      if (creditedKobo > 0) {
-        releasedCount += 1;
-        totalCreditedKobo += creditedKobo;
-        releasedBookingIds.push(bookingId);
+      const netKobo = Number(booking.netToDriverKobo || booking.amountKobo || 0);
+      if (netKobo > 0) {
+        const success = await processPayout(bookingId, driverUid, netKobo, tripId);
+        if (success) {
+          releasedCount++;
+          releasedBookingIds.push(bookingId);
+        }
       }
     }
 
-    // mark ride/trip status completed (best-effort)
-    await db.collection(RIDES_COL).doc(tripId).set(
-      { status: "completed", updatedAt: admin.firestore.FieldValue.serverTimestamp() },
-      { merge: true }
-    );
-    await db.collection(TRIPS_COL).doc(tripId).set(
-      { status: "completed", updatedAt: admin.firestore.FieldValue.serverTimestamp() },
-      { merge: true }
-    );
+    await db.collection(RIDES_COL).doc(tripId).set({ status: "completed", updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    await db.collection(TRIPS_COL).doc(tripId).set({ status: "completed", updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
 
-    return res.json({
-      ok: true,
-      tripId,
-      releasedCount,
-      releasedBookingIds,
-      totalCreditedKobo,
-      totalCreditedNaira: totalCreditedKobo / 100,
-      note:
-        releasedCount === 0
-          ? "No escrowed bookings were released. Check booking.status (must be escrowed/accepted/confirmed) and escrow.status (must be held)."
-          : "Driver wallet credited.",
-    });
+    res.json({ ok: true, releasedCount, releasedBookingIds });
   } catch (err: any) {
     console.error("Complete Trip Error:", err);
     return res.status(400).json({ error: err.message || "Failed to complete trip" });
@@ -2038,6 +1952,84 @@ app.post("/api/trips/:tripId/complete", requireFirebaseAuth, async (req: any, re
   // Withdrawal (Real Paystack Transfer)
   // ------------------------------------------------------
   app.post("/api/wallet/withdraw", requireFirebaseAuth, async (req: any, res) => {
+    /* ... existing withdrawal logic ... */
+  });
+
+  // ------------------------------------------------------
+  // Push Notifications
+  // ------------------------------------------------------
+  app.post("/api/notifications/register-token", requireFirebaseAuth, async (req: any, res) => {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ error: "Token required" });
+    
+    try {
+      await db.collection(USERS_COL).doc(req.uid).update({ fcmToken: token });
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  async function sendPushNotification(uid: string, title: string, body: string, data?: any) {
+    try {
+      const userSnap = await db.collection(USERS_COL).doc(uid).get();
+      const userData = userSnap.data();
+      const token = userData?.fcmToken;
+      
+      if (!token) return;
+
+      console.log(`[Push Notification] To: ${uid}, Title: ${title}, Body: ${body}`);
+      
+      // In a real app with Firebase Admin Messaging:
+      /*
+      await admin.messaging().send({
+        token: token,
+        notification: { title, body },
+        data: data || {},
+      });
+      */
+    } catch (err) {
+      console.error("Error sending push notification:", err);
+    }
+  }
+
+  async function notifyDriversOfNewRide(ride: any) {
+    const { origin, destination, pickup_area } = ride;
+    const originKey = origin?.toLowerCase().trim() || "";
+    const destKey = destination?.toLowerCase().trim() || "";
+    const areaKey = pickup_area?.toLowerCase().trim() || "";
+
+    try {
+      // Find drivers with matching preferences
+      const driversSnap = await db.collection(USERS_COL)
+        .where("userType", "==", "driver")
+        .get();
+
+      for (const doc of driversSnap.docs) {
+        const driver = doc.data();
+        const prefs = driver.preferred_routes || [];
+        const areas = driver.preferred_areas || [];
+
+        const matchesRoute = prefs.some((r: string) => 
+          originKey.includes(r.toLowerCase()) || destKey.includes(r.toLowerCase())
+        );
+        const matchesArea = areas.some((a: string) => 
+          areaKey.includes(a.toLowerCase())
+        );
+
+        if (matchesRoute || matchesArea) {
+          await sendPushNotification(
+            doc.id,
+            "New Trip Available!",
+            `A new ride from ${origin} to ${destination} was just posted.`,
+            { rideId: ride.id, type: 'new_ride' }
+          );
+        }
+      }
+    } catch (err) {
+      console.error("Error notifying drivers:", err);
+    }
+  }
     const { amountKobo } = req.body || {};
     if (!amountKobo) return res.status(400).send("amountKobo required");
 

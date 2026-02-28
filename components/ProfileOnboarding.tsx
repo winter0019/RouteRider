@@ -118,7 +118,14 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
         {step === -2 && (
           <div className="space-y-12 animate-in fade-in duration-700 flex flex-col items-center justify-center min-h-[80vh]">
             <header className="text-center space-y-6">
-               <div className="mx-auto w-24 h-24 bg-emerald-600 text-white rounded-[2.5rem] flex items-center justify-center font-black text-5xl shadow-2xl shadow-emerald-200 border-4 border-white">R</div>
+               <div className="mx-auto w-32 h-32 bg-white rounded-[2.5rem] flex items-center justify-center overflow-hidden shadow-2xl shadow-emerald-200 border-4 border-white">
+                 <img 
+                   src="https://picsum.photos/seed/routerider/200/200" 
+                   alt="RouteRider Logo" 
+                   className="w-full h-full object-cover"
+                   referrerPolicy="no-referrer"
+                 />
+               </div>
                <div className="space-y-2">
                  <h1 className="text-4xl font-black tracking-tighter text-slate-900">RouteRider</h1>
                  <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Daura ↔ Katsina Carpooling</p>
@@ -142,6 +149,15 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
               >
                 Sign In
               </button>
+
+              <div className="pt-4 text-center">
+                <button 
+                  onClick={() => window.location.href = '/admin'}
+                  className="text-xs font-black text-slate-400 uppercase tracking-widest hover:text-emerald-600 transition-colors"
+                >
+                  Admin Dashboard
+                </button>
+              </div>
             </div>
 
             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest text-center">
