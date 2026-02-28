@@ -1749,22 +1749,6 @@ app.post("/api/bookings/:bookingId/complete", requireFirebaseAuth, async (req: a
       throw new Error(`Booking not releasable. Current status: ${booking.status}`);
     }
 
-    const escrowRef = db.collection(ESCROWS_COL).doc(bookingId);
-    const escrowSnap = await escrowRef.get();
-    if (!escrowSnap.exists) throw new Error("Escrow record not found");
-
-    const escrow: any = escrowSnap.data();
-    if (escrow.status !== "held") throw new Error(`Escrow not held. Current: ${escrow.status}`);
-
-    const driverSnap = await db.collection(USERS_COL).doc(driverUid).get();
-    const driverData = driverSnap.data() as any;
-
-    const recipientCode = driverData?.bank_details?.recipient_code || driverData?.recipient_code;
-
-    if (!recipientCode) {
-      throw new Error("Driver has no bank account configured for payouts.");
-    }
-
     const netToDriverKobo = Number(booking.netToDriverKobo || booking.amountKobo || 0);
     if (netToDriverKobo <= 0) throw new Error("Booking has 0 netToDriverKobo/amountKobo");
 
@@ -1949,13 +1933,6 @@ app.post("/api/trips/:tripId/complete", requireFirebaseAuth, async (req: any, re
   });
 
   // ------------------------------------------------------
-  // Withdrawal (Real Paystack Transfer)
-  // ------------------------------------------------------
-  app.post("/api/wallet/withdraw", requireFirebaseAuth, async (req: any, res) => {
-    /* ... existing withdrawal logic ... */
-  });
-
-  // ------------------------------------------------------
   // Push Notifications
   // ------------------------------------------------------
   app.post("/api/notifications/register-token", requireFirebaseAuth, async (req: any, res) => {
@@ -2030,6 +2007,11 @@ app.post("/api/trips/:tripId/complete", requireFirebaseAuth, async (req: any, re
       console.error("Error notifying drivers:", err);
     }
   }
+
+  // ------------------------------------------------------
+  // Withdrawal (Real Paystack Transfer)
+  // ------------------------------------------------------
+  app.post("/api/wallet/withdraw", requireFirebaseAuth, async (req: any, res) => {
     const { amountKobo } = req.body || {};
     if (!amountKobo) return res.status(400).send("amountKobo required");
 
