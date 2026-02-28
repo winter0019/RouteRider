@@ -298,14 +298,14 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ onBook }) => {
                   <div className="grid grid-cols-2 gap-3">
                     <button 
                       onClick={() => setPaymentMethod('wallet')}
-                      className={`p-4 rounded-3xl border-2 transition-all flex flex-col items-center gap-2 ${paymentMethod === 'wallet' ? 'border-emerald-500 bg-emerald-50' : 'border-slate-100 bg-white'}`}
+                      className={`p-4 rounded-3xl border-2 transition-all flex flex-col items-center gap-2 ${paymentMethod === 'wallet' ? 'border-brand-primary bg-brand-primary/5' : 'border-slate-100 bg-white'}`}
                     >
-                      <div className={paymentMethod === 'wallet' ? 'text-emerald-600' : 'text-slate-400'}>{ICONS.Wallet}</div>
+                      <div className={paymentMethod === 'wallet' ? 'text-brand-primary' : 'text-slate-400'}>{ICONS.Wallet}</div>
                       <span className="text-[10px] font-black uppercase">Wallet</span>
                     </button>
                     <button 
                       onClick={() => setPaymentMethod('paystack')}
-                      className={`p-4 rounded-3xl border-2 transition-all flex flex-col items-center gap-2 ${paymentMethod === 'paystack' ? 'border-emerald-500 bg-emerald-50' : 'border-slate-100 bg-white'}`}
+                      className={`p-4 rounded-3xl border-2 transition-all flex flex-col items-center gap-2 ${paymentMethod === 'paystack' ? 'border-brand-primary bg-brand-primary/5' : 'border-slate-100 bg-white'}`}
                     >
                       <div className={paymentMethod === 'paystack' ? 'text-brand-accent' : 'text-slate-400'}>{ICONS.Check}</div>
                       <span className="text-[10px] font-black uppercase">Paystack</span>
@@ -317,12 +317,12 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ onBook }) => {
                    <div className="bg-slate-50 p-4 rounded-3xl space-y-1">
                       <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Vehicle</p>
                       <p className="font-black text-sm">{selectedTrip.vehicle_name || selectedTrip.car_details || 'Vehicle'}</p>
-                      <p className="text-[10px] text-emerald-600 font-bold">Verified</p>
+                      <p className="text-[10px] text-brand-accent font-bold">Verified</p>
                    </div>
                    <div className="bg-slate-50 p-4 rounded-3xl space-y-1">
                       <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Departure</p>
                       <p className="font-black text-sm">{new Date(selectedTrip.departure_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                      <p className="text-[10px] text-emerald-600 font-bold">Today</p>
+                      <p className="text-[10px] text-brand-accent font-bold">Today</p>
                    </div>
                 </div>
 

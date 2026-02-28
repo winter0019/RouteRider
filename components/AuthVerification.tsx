@@ -170,13 +170,13 @@ const AuthVerification: React.FC<AuthVerificationProps> = ({ onVerified, onBack,
         <div className="flex bg-slate-100 p-1 rounded-2xl">
           <button 
             onClick={() => { setAuthMethod('email'); setError(null); }}
-            className={`flex-1 py-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all ${authMethod === 'email' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-400'}`}
+            className={`flex-1 py-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all ${authMethod === 'email' ? 'bg-white text-brand-primary shadow-sm' : 'text-gray-400'}`}
           >
             Email
           </button>
           <button 
             onClick={() => { setAuthMethod('phone'); setError(null); }}
-            className={`flex-1 py-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all ${authMethod === 'phone' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-400'}`}
+            className={`flex-1 py-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all ${authMethod === 'phone' ? 'bg-white text-brand-primary shadow-sm' : 'text-gray-400'}`}
           >
             Phone
           </button>
@@ -197,7 +197,7 @@ const AuthVerification: React.FC<AuthVerificationProps> = ({ onVerified, onBack,
                   placeholder="name@example.com" 
                   value={email}
                   onChange={e => setEmail(e.target.value)} 
-                  className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-lg outline-none focus:border-emerald-500 transition-all" 
+                  className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-lg outline-none focus:border-brand-primary transition-all" 
                 />
               </div>
               <div className="space-y-2">
@@ -207,20 +207,20 @@ const AuthVerification: React.FC<AuthVerificationProps> = ({ onVerified, onBack,
                   placeholder="••••••••" 
                   value={password}
                   onChange={e => setPassword(e.target.value)} 
-                  className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-lg outline-none focus:border-emerald-500 transition-all" 
+                  className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-lg outline-none focus:border-brand-primary transition-all" 
                 />
               </div>
               <button 
                 onClick={handleEmailAuth} 
                 disabled={isVerifying}
-                className="w-full bg-emerald-600 text-white p-5 rounded-2xl font-black text-xl shadow-xl shadow-emerald-200 flex items-center justify-center gap-2"
+                className="w-full bg-brand-primary text-white p-5 rounded-2xl font-black text-xl shadow-xl shadow-brand-primary/20 flex items-center justify-center gap-2"
               >
                 {isVerifying && <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
                 {mode === 'signup' ? 'Sign Up' : 'Log In'}
               </button>
               <button 
                 onClick={() => setMode(mode === 'signup' ? 'login' : 'signup')} 
-                className="w-full text-emerald-600 font-black text-sm uppercase tracking-wider"
+                className="w-full text-brand-primary font-black text-sm uppercase tracking-wider"
               >
                 {mode === 'signup' ? 'Switch to Log In' : 'Switch to Sign Up'}
               </button>
@@ -242,13 +242,13 @@ const AuthVerification: React.FC<AuthVerificationProps> = ({ onVerified, onBack,
                       placeholder="902 874 3008" 
                       value={phoneNumber}
                       onChange={e => setPhoneNumber(e.target.value)} 
-                      className="w-full p-5 pl-16 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-lg outline-none focus:border-emerald-500 transition-all" 
+                      className="w-full p-5 pl-16 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-lg outline-none focus:border-brand-primary transition-all" 
                     />
                   </div>
                   <button 
                     onClick={handleSendOTP} 
                     disabled={isVerifying}
-                    className="w-full bg-emerald-600 text-white p-5 rounded-2xl font-black text-xl shadow-xl shadow-emerald-200 flex items-center justify-center gap-2"
+                    className="w-full bg-brand-primary text-white p-5 rounded-2xl font-black text-xl shadow-xl shadow-brand-primary/20 flex items-center justify-center gap-2"
                   >
                     {isVerifying && <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
                     Send OTP
@@ -268,19 +268,19 @@ const AuthVerification: React.FC<AuthVerificationProps> = ({ onVerified, onBack,
                     placeholder="123456" 
                     value={otp}
                     onChange={e => setOtp(e.target.value)} 
-                    className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-center text-3xl tracking-[0.5em] outline-none focus:border-emerald-500 transition-all" 
+                    className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-center text-3xl tracking-[0.5em] outline-none focus:border-brand-primary transition-all" 
                   />
                   <button 
                     onClick={handleVerifyOTP} 
                     disabled={isVerifying}
-                    className="w-full bg-emerald-600 text-white p-5 rounded-2xl font-black text-xl shadow-xl shadow-emerald-200 flex items-center justify-center gap-2"
+                    className="w-full bg-brand-primary text-white p-5 rounded-2xl font-black text-xl shadow-xl shadow-brand-primary/20 flex items-center justify-center gap-2"
                   >
                     {isVerifying && <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>}
                     Verify & Continue
                   </button>
                   <button 
                     onClick={() => setPhoneStep('phone')} 
-                    className="w-full text-emerald-600 font-black text-sm uppercase tracking-wider"
+                    className="w-full text-brand-primary font-black text-sm uppercase tracking-wider"
                   >
                     Change Number
                   </button>

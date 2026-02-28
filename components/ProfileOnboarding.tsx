@@ -179,9 +179,9 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
             <div className="w-full space-y-4">
               <button 
                 onClick={() => handleRoleSelect('driver')}
-                className="w-full p-6 bg-white border-2 border-slate-100 rounded-3xl flex items-center gap-4 hover:border-emerald-500 transition-all text-left group"
+                className="w-full p-6 bg-white border-2 border-slate-100 rounded-3xl flex items-center gap-4 hover:border-brand-primary transition-all text-left group"
               >
-                <div className="p-4 bg-emerald-50 text-emerald-600 rounded-2xl group-hover:scale-110 transition-all">{ICONS.Car}</div>
+                <div className="p-4 bg-brand-primary/5 text-brand-primary rounded-2xl group-hover:scale-110 transition-all">{ICONS.Car}</div>
                 <div>
                   <h3 className="font-black text-lg">I am a Driver</h3>
                   <p className="text-xs text-gray-400 font-bold uppercase tracking-tight">Fill seats & offset fuel</p>
@@ -190,9 +190,9 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
 
               <button 
                 onClick={() => handleRoleSelect('passenger')}
-                className="w-full p-6 bg-white border-2 border-slate-100 rounded-3xl flex items-center gap-4 hover:border-emerald-500 transition-all text-left group"
+                className="w-full p-6 bg-white border-2 border-slate-100 rounded-3xl flex items-center gap-4 hover:border-brand-primary transition-all text-left group"
               >
-                <div className="p-4 bg-amber-50 text-amber-600 rounded-2xl group-hover:scale-110 transition-all">{ICONS.User}</div>
+                <div className="p-4 bg-brand-secondary/5 text-brand-secondary rounded-2xl group-hover:scale-110 transition-all">{ICONS.User}</div>
                 <div>
                   <h3 className="font-black text-lg">I am a Passenger</h3>
                   <p className="text-xs text-gray-400 font-bold uppercase tracking-tight">Find affordable rides</p>
@@ -263,19 +263,19 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
                   placeholder="Full Name" 
                   value={formData.full_name}
                   onChange={e => setFormData({...formData, full_name: e.target.value})} 
-                  className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-lg outline-none focus:border-emerald-500 transition-all" 
+                  className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-lg outline-none focus:border-brand-primary transition-all" 
                 />
                 <input 
                   placeholder="Email Address" 
                   value={formData.email}
                   onChange={e => setFormData({...formData, email: e.target.value})} 
-                  className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-lg outline-none focus:border-emerald-500 transition-all" 
+                  className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-lg outline-none focus:border-brand-primary transition-all" 
                 />
                 <input 
                   placeholder="Phone Number (Optional)" 
                   value={formData.phone}
                   onChange={e => setFormData({...formData, phone: e.target.value})} 
-                  className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-lg outline-none focus:border-emerald-500 transition-all" 
+                  className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black text-lg outline-none focus:border-brand-primary transition-all" 
                 />
                 <button 
                   onClick={() => {
@@ -283,7 +283,7 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
                     else setStep(2);
                   }} 
                   disabled={!formData.full_name}
-                  className="w-full bg-emerald-600 text-white p-5 rounded-2xl font-black text-xl shadow-xl shadow-emerald-200 disabled:opacity-50"
+                  className="w-full bg-brand-primary text-white p-5 rounded-2xl font-black text-xl shadow-xl shadow-brand-primary/20 disabled:opacity-50"
                 >
                   {role === 'passenger' ? 'Finish Signup' : 'Next: Identity Verification'}
                 </button>
@@ -301,7 +301,7 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
             <div className="space-y-6">
               <div 
                 className={`relative w-full aspect-video border-4 border-dashed rounded-3xl flex flex-col items-center justify-center overflow-hidden transition-all ${
-                  formData.nin_image ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-slate-50'
+                  formData.nin_image ? 'border-brand-accent bg-brand-accent/5' : 'border-slate-200 bg-slate-50'
                 }`}
               >
                 {formData.nin_image ? (
@@ -315,15 +315,15 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
                 
                 {isVerifying && (
                   <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center space-y-3 p-6 text-center">
-                    <div className="w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
-                    <p className="font-black text-emerald-800 animate-pulse">Gemini AI is analyzing your document...</p>
+                  <div className="w-10 h-10 border-4 border-brand-primary border-t-transparent rounded-full animate-spin"></div>
+                  <p className="font-black text-brand-primary animate-pulse">Gemini AI is analyzing your document...</p>
                   </div>
                 )}
               </div>
 
               {verificationResult && (
                 <div className={`p-4 rounded-2xl flex items-start gap-3 border-2 ${
-                  verificationResult.verified ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-red-50 border-red-100 text-red-700'
+                  verificationResult.verified ? 'bg-brand-accent/5 border-brand-accent/10 text-brand-accent' : 'bg-red-50 border-red-100 text-red-700'
                 }`}>
                   <div className="mt-0.5">{verificationResult.verified ? ICONS.Check : ICONS.Alert}</div>
                   <div>
@@ -355,7 +355,7 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
                 <button 
                   onClick={() => setStep(3)}
                   disabled={!verificationResult?.verified || isVerifying}
-                  className="w-full bg-emerald-600 text-white p-5 rounded-2xl font-black text-xl shadow-xl shadow-emerald-200 disabled:opacity-30 transition-all"
+                  className="w-full bg-brand-primary text-white p-5 rounded-2xl font-black text-xl shadow-xl shadow-brand-primary/20 disabled:opacity-30 transition-all"
                 >
                   Proceed to Car Details
                 </button>
@@ -375,21 +375,21 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
                 placeholder="Make (e.g. Toyota)" 
                 value={formData.car_make} 
                 onChange={e => setFormData({...formData, car_make: e.target.value})} 
-                className="w-full p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black focus:border-emerald-500 outline-none" 
+                className="w-full p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black focus:border-brand-primary outline-none" 
               />
               <input 
                 placeholder="Model (e.g. Corolla)" 
                 value={formData.car_model} 
                 onChange={e => setFormData({...formData, car_model: e.target.value})} 
-                className="w-full p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black focus:border-emerald-500 outline-none" 
+                className="w-full p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black focus:border-brand-primary outline-none" 
               />
               <input 
                 placeholder="License Plate" 
                 value={formData.plate_number} 
                 onChange={e => setFormData({...formData, plate_number: e.target.value})} 
-                className="w-full p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black focus:border-emerald-500 outline-none" 
+                className="w-full p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl font-black focus:border-brand-primary outline-none" 
               />
-              <button onClick={handleSubmit} disabled={!formData.plate_number} className="w-full bg-emerald-600 text-white p-5 rounded-2xl font-black text-xl shadow-xl shadow-emerald-600/20 active:scale-[0.98] transition-all disabled:opacity-50">Finish Driver Signup</button>
+              <button onClick={handleSubmit} disabled={!formData.plate_number} className="w-full bg-brand-primary text-white p-5 rounded-2xl font-black text-xl shadow-xl shadow-brand-primary/20 active:scale-[0.98] transition-all disabled:opacity-50">Finish Driver Signup</button>
             </div>
           </div>
         )}

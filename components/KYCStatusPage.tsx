@@ -17,7 +17,7 @@ const KYCStatusPage: React.FC<KYCStatusPageProps> = ({ profile, onRetry, onLogou
     <div className="min-h-screen bg-white flex flex-col items-center justify-center p-8 text-center space-y-8 animate-in fade-in duration-500">
       <header className="space-y-4">
         <div className={`mx-auto w-24 h-24 rounded-[2.5rem] flex items-center justify-center text-4xl shadow-2xl border-4 border-white ${
-          isPending ? 'bg-amber-100 text-amber-600 shadow-amber-100' : 
+          isPending ? 'bg-brand-secondary/10 text-brand-secondary shadow-brand-secondary/10' : 
           isFailed ? 'bg-red-100 text-red-600 shadow-red-100' : 
           'bg-slate-100 text-slate-600 shadow-slate-100'
         }`}>
@@ -54,7 +54,7 @@ const KYCStatusPage: React.FC<KYCStatusPageProps> = ({ profile, onRetry, onLogou
         {isFailed && (
           <button 
             onClick={onRetry}
-            className="w-full bg-emerald-600 text-white p-5 rounded-2xl font-black text-lg shadow-xl shadow-emerald-200 active:scale-[0.98] transition-all"
+            className="w-full bg-brand-primary text-white p-5 rounded-2xl font-black text-lg shadow-xl shadow-brand-primary/20 active:scale-[0.98] transition-all"
           >
             Try Again
           </button>

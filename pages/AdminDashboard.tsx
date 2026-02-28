@@ -125,13 +125,13 @@ export default function AdminDashboard() {
       <div className="flex gap-4 mb-8 border-b border-slate-100 pb-4">
         <button 
           onClick={() => setActiveTab('kyc')}
-          className={`px-6 py-2 rounded-xl font-black text-sm transition-all ${activeTab === 'kyc' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-100' : 'bg-slate-50 text-slate-400'}`}
+          className={`px-6 py-2 rounded-xl font-black text-sm transition-all ${activeTab === 'kyc' ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/20' : 'bg-slate-50 text-slate-400'}`}
         >
           KYC Queue ({kycQueue.length})
         </button>
         <button 
           onClick={() => setActiveTab('trips')}
-          className={`px-6 py-2 rounded-xl font-black text-sm transition-all ${activeTab === 'trips' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-100' : 'bg-slate-50 text-slate-400'}`}
+          className={`px-6 py-2 rounded-xl font-black text-sm transition-all ${activeTab === 'trips' ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/20' : 'bg-slate-50 text-slate-400'}`}
         >
           Trip Monitoring ({trips.length})
         </button>
@@ -158,7 +158,7 @@ export default function AdminDashboard() {
                       <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{item.role} • {item.documentType}</p>
                     </div>
                     <div className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${
-                      item.aiDecision === 'pass' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                      item.aiDecision === 'pass' ? 'bg-brand-accent/10 text-brand-accent' : 'bg-amber-100 text-amber-700'
                     }`}>
                       AI Result: {item.aiDecision} ({Math.round(item.aiScore * 100)}%)
                     </div>
@@ -177,7 +177,7 @@ export default function AdminDashboard() {
                   <div className="flex gap-3 pt-2">
                     <button 
                       onClick={() => handleDecision(item.uid, "approved")}
-                      className="flex-1 bg-emerald-600 text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-emerald-100 active:scale-95 transition-all"
+                      className="flex-1 bg-brand-primary text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-brand-primary/20 active:scale-95 transition-all"
                     >
                       Approve Driver
                     </button>
@@ -210,8 +210,8 @@ export default function AdminDashboard() {
                     </p>
                   </div>
                   <div className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${
-                    trip.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 
-                    trip.status === 'cancelled' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                    trip.status === 'completed' ? 'bg-brand-accent/10 text-brand-accent' : 
+                    trip.status === 'cancelled' ? 'bg-red-100 text-red-700' : 'bg-brand-secondary/10 text-brand-secondary'
                   }`}>
                     {trip.status}
                   </div>
@@ -236,7 +236,7 @@ export default function AdminDashboard() {
                   <div className="flex gap-3 pt-2">
                     <button 
                       onClick={() => handleTripAction(trip.id, trip.source, 'settle')}
-                      className="flex-1 bg-emerald-600 text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-emerald-100 active:scale-95 transition-all"
+                      className="flex-1 bg-brand-primary text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-brand-primary/20 active:scale-95 transition-all"
                     >
                       Settle (Release Funds)
                     </button>
@@ -261,13 +261,13 @@ export default function AdminDashboard() {
       )}
 
       <section className="mt-12 grid grid-cols-3 gap-4">
-        <div className="p-6 bg-indigo-50 rounded-3xl border-2 border-indigo-100">
-          <p className="text-[10px] font-black uppercase text-indigo-400 tracking-widest mb-1">Total Escrow</p>
-          <p className="text-2xl font-black text-indigo-900">₦0.00</p>
+        <div className="p-6 bg-brand-secondary/5 rounded-3xl border-2 border-brand-secondary/10">
+          <p className="text-[10px] font-black uppercase text-brand-secondary tracking-widest mb-1">Total Escrow</p>
+          <p className="text-2xl font-black text-brand-primary">₦0.00</p>
         </div>
-        <div className="p-6 bg-emerald-50 rounded-3xl border-2 border-emerald-100">
-          <p className="text-[10px] font-black uppercase text-emerald-400 tracking-widest mb-1">Commission</p>
-          <p className="text-2xl font-black text-emerald-900">₦0.00</p>
+        <div className="p-6 bg-brand-accent/5 rounded-3xl border-2 border-brand-accent/10">
+          <p className="text-[10px] font-black uppercase text-brand-accent tracking-widest mb-1">Commission</p>
+          <p className="text-2xl font-black text-brand-primary">₦0.00</p>
         </div>
         <div className="p-6 bg-slate-50 rounded-3xl border-2 border-slate-100">
           <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Active Trips</p>

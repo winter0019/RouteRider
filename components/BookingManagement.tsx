@@ -121,7 +121,7 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
           <button 
             onClick={completeTrip}
             disabled={isCompleting}
-            className="px-4 py-2 bg-emerald-100 text-emerald-700 rounded-xl font-bold text-xs disabled:opacity-50"
+            className="px-4 py-2 bg-brand-accent/10 text-brand-accent rounded-xl font-bold text-xs disabled:opacity-50"
           >
             {isCompleting ? 'Processing...' : 'Complete Trip'}
           </button>
@@ -135,7 +135,7 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
           pendingBookings.map(booking => (
             <div key={booking.booking_id} className="bg-white border-2 border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
               <div className="flex items-center gap-3">
-                <img src={booking.passenger_photo} className="w-12 h-12 rounded-full border-2 border-emerald-50" />
+                <img src={booking.passenger_photo} className="w-12 h-12 rounded-full border-2 border-brand-accent/5" />
                 <div>
                   <div className="font-bold text-slate-900">{booking.passenger_name}</div>
                   <div className="text-xs text-slate-500 font-bold flex items-center gap-1">
@@ -145,7 +145,7 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
               </div>
               <button 
                 onClick={() => setViewingPassenger(booking)}
-                className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold"
+                className="bg-brand-primary text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-brand-primary/20"
               >
                 View
               </button>
@@ -166,7 +166,7 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
                 <img src={booking.passenger_photo} className="w-10 h-10 rounded-full grayscale opacity-70" />
                 <div>
                   <div className="font-bold text-slate-700">{booking.passenger_name}</div>
-                  <div className="text-xs text-emerald-600 font-bold flex items-center gap-1">
+                  <div className="text-xs text-brand-accent font-bold flex items-center gap-1">
                     {ICONS.Check} ₦{booking.amount_paid} Secured
                   </div>
                 </div>
@@ -197,7 +197,7 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
           <div className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="p-6 text-center space-y-4">
-              <img src={viewingPassenger.passenger_photo} className="w-24 h-24 rounded-full mx-auto border-4 border-emerald-50" />
+              <img src={viewingPassenger.passenger_photo} className="w-24 h-24 rounded-full mx-auto border-4 border-brand-accent/5" />
               <div>
                 <h3 className="text-xl font-bold text-slate-900">{viewingPassenger.passenger_name}</h3>
                 <div className="flex items-center justify-center gap-2 mt-1">
@@ -208,20 +208,20 @@ const BookingManagement: React.FC<BookingManagementProps> = ({
               </div>
 
               <div className="grid grid-cols-2 gap-2 py-4">
-                <div className="bg-emerald-50 p-3 rounded-2xl text-center">
-                  <p className="text-[10px] text-emerald-600 uppercase font-bold tracking-tight">ID Verified</p>
-                  <div className="text-emerald-700 font-bold flex items-center justify-center gap-1">{ICONS.Check} Yes</div>
+                <div className="bg-brand-accent/5 p-3 rounded-2xl text-center">
+                  <p className="text-[10px] text-brand-accent uppercase font-bold tracking-tight">ID Verified</p>
+                  <div className="text-brand-primary font-bold flex items-center justify-center gap-1">{ICONS.Check} Yes</div>
                 </div>
-                <div className="bg-blue-50 p-3 rounded-2xl text-center">
-                  <p className="text-[10px] text-blue-600 uppercase font-bold tracking-tight">Payment</p>
-                  <div className="text-blue-700 font-bold">₦{viewingPassenger.amount_paid}</div>
+                <div className="bg-brand-primary/5 p-3 rounded-2xl text-center">
+                  <p className="text-[10px] text-brand-primary uppercase font-bold tracking-tight">Payment</p>
+                  <div className="text-brand-secondary font-bold">₦{viewingPassenger.amount_paid}</div>
                 </div>
               </div>
 
               <div className="flex flex-col gap-2 pt-2">
                 <button 
                   onClick={() => handleAction(viewingPassenger, 'accept')}
-                  className="w-full bg-emerald-600 text-white p-4 rounded-2xl font-bold shadow-lg shadow-emerald-200"
+                  className="w-full bg-brand-primary text-white p-4 rounded-2xl font-bold shadow-lg shadow-brand-primary/20"
                 >
                   Accept Passenger
                 </button>
