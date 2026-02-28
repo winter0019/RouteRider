@@ -118,12 +118,15 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
         {step === -2 && (
           <div className="space-y-12 animate-in fade-in duration-700 flex flex-col items-center justify-center min-h-[80vh]">
             <header className="text-center space-y-6">
-               <div className="mx-auto w-32 h-32 bg-white rounded-[2.5rem] flex items-center justify-center overflow-hidden shadow-2xl shadow-emerald-200 border-4 border-white">
+               <div className="mx-auto w-40 h-40 bg-white rounded-[2.5rem] flex items-center justify-center overflow-hidden shadow-2xl shadow-brand-primary/20 border-4 border-white">
                  <img 
-                   src="https://picsum.photos/seed/routerider/200/200" 
+                   src="/logo.png" 
                    alt="RouteRider Logo" 
-                   className="w-full h-full object-cover"
+                   className="w-full h-full object-contain p-4"
                    referrerPolicy="no-referrer"
+                   onError={(e) => {
+                     (e.target as HTMLImageElement).src = "https://picsum.photos/seed/routerider/200/200";
+                   }}
                  />
                </div>
                <div className="space-y-2">
@@ -138,7 +141,7 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
             <div className="w-full space-y-4">
               <button 
                 onClick={() => setStep(-1)}
-                className="w-full bg-emerald-600 text-white p-6 rounded-3xl font-black text-xl shadow-xl shadow-emerald-200 active:scale-[0.98] transition-all"
+                className="w-full bg-brand-primary text-white p-6 rounded-3xl font-black text-xl shadow-xl shadow-brand-primary/20 active:scale-[0.98] transition-all"
               >
                 Get Started
               </button>
@@ -153,7 +156,7 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
               <div className="pt-4 text-center">
                 <button 
                   onClick={() => window.location.href = '/admin'}
-                  className="text-xs font-black text-slate-400 uppercase tracking-widest hover:text-emerald-600 transition-colors"
+                  className="text-xs font-black text-slate-400 uppercase tracking-widest hover:text-brand-secondary transition-colors"
                 >
                   Admin Dashboard
                 </button>

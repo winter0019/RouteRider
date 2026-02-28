@@ -43,7 +43,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, activeTrip, bookings, on
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-white p-4 rounded-2xl border-2 border-slate-100 shadow-sm space-y-1">
           <p className="text-[10px] text-gray-500 uppercase font-black tracking-wider">Today's Earnings</p>
-          <div className="text-xl font-black text-emerald-600">₦{profile.total_earnings.toLocaleString()}</div>
+          <div className="text-xl font-black text-brand-secondary">₦{profile.total_earnings.toLocaleString()}</div>
         </div>
         <div className="bg-white p-4 rounded-2xl border-2 border-slate-100 shadow-sm space-y-1">
           <p className="text-[10px] text-gray-500 uppercase font-black tracking-wider">Wallet Balance</p>
@@ -52,21 +52,21 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, activeTrip, bookings, on
       </div>
 
       {/* Fuel Offset Progress */}
-      <div className="bg-emerald-50 p-5 rounded-3xl border-2 border-emerald-100">
+      <div className="bg-brand-accent/5 p-5 rounded-3xl border-2 border-brand-accent/10">
         <div className="flex justify-between items-end mb-2">
           <div>
-            <h3 className="font-black text-emerald-900 text-sm uppercase tracking-tight">Fuel Offset</h3>
-            <p className="text-[10px] text-emerald-700 font-bold">Monthly goal: ₦80,000</p>
+            <h3 className="font-black text-brand-primary text-sm uppercase tracking-tight">Fuel Offset</h3>
+            <p className="text-[10px] text-brand-accent font-bold">Monthly goal: ₦80,000</p>
           </div>
-          <span className="text-lg font-black text-emerald-700">{fuelOffsetPercent}%</span>
+          <span className="text-lg font-black text-brand-accent">{fuelOffsetPercent}%</span>
         </div>
-        <div className="w-full bg-emerald-200 h-3 rounded-full overflow-hidden">
+        <div className="w-full bg-brand-accent/20 h-3 rounded-full overflow-hidden">
           <div 
-            className="bg-emerald-600 h-full transition-all duration-1000 ease-out" 
+            className="bg-brand-accent h-full transition-all duration-1000 ease-out" 
             style={{ width: `${fuelOffsetPercent}%` }}
           />
         </div>
-        <p className="mt-4 text-xs text-emerald-800 font-bold italic leading-relaxed">
+        <p className="mt-4 text-xs text-brand-primary/80 font-bold italic leading-relaxed">
           "{insight}"
         </p>
       </div>
@@ -95,7 +95,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, activeTrip, bookings, on
             <div className="flex items-center gap-3">
               <div className="flex -space-x-2">
                 {[...Array(acceptedCount)].map((_, i) => (
-                  <div key={`acc-${i}`} className="w-8 h-8 rounded-full border-2 border-white bg-emerald-500 flex items-center justify-center text-white shadow-sm">
+                  <div key={`acc-${i}`} className="w-8 h-8 rounded-full border-2 border-white bg-brand-accent flex items-center justify-center text-white shadow-sm">
                     {ICONS.User}
                   </div>
                 ))}
@@ -159,14 +159,14 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, activeTrip, bookings, on
             onClick={() => onNavigate('wallet')}
             className="flex items-center gap-3 p-4 bg-white border-2 border-slate-100 rounded-2xl hover:bg-slate-50 transition-all text-left group"
           >
-            <div className="p-2 bg-amber-100 text-amber-600 rounded-xl group-hover:scale-110 transition-transform">{ICONS.Wallet}</div>
+            <div className="p-2 bg-brand-secondary/10 text-brand-secondary rounded-xl group-hover:scale-110 transition-transform">{ICONS.Wallet}</div>
             <span className="font-black text-sm text-gray-700">Withdraw</span>
           </button>
           <button 
             onClick={() => onNavigate('settings')}
             className="flex items-center gap-3 p-4 bg-white border-2 border-slate-100 rounded-2xl hover:bg-slate-50 transition-all text-left group"
           >
-            <div className="p-2 bg-blue-100 text-blue-600 rounded-xl group-hover:scale-110 transition-transform">{ICONS.User}</div>
+            <div className="p-2 bg-brand-primary/10 text-brand-primary rounded-xl group-hover:scale-110 transition-transform">{ICONS.User}</div>
             <span className="font-black text-sm text-gray-700">ID Status</span>
           </button>
         </div>

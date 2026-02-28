@@ -67,7 +67,7 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
   if (activeTrip) {
     return (
       <div className="flex flex-col items-center justify-center h-[70vh] text-center p-6 space-y-6 animate-in fade-in duration-500">
-        <div className="w-24 h-24 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-2 shadow-inner border-4 border-emerald-50">
+        <div className="w-24 h-24 bg-brand-accent/10 text-brand-accent rounded-full flex items-center justify-center mb-2 shadow-inner border-4 border-brand-accent/5">
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="20 6 9 17 4 12" />
           </svg>
@@ -79,7 +79,7 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
         <div className="w-full pt-6 space-y-4">
           <button 
             onClick={() => onNavigate('dashboard')}
-            className="block w-full bg-emerald-600 text-white py-5 rounded-2xl font-black shadow-2xl shadow-emerald-200 text-lg hover:scale-[1.02] active:scale-95 transition-all"
+            className="block w-full bg-brand-primary text-white py-5 rounded-2xl font-black shadow-2xl shadow-brand-primary/20 text-lg hover:scale-[1.02] active:scale-95 transition-all"
           >
             Dashboard
           </button>
@@ -107,7 +107,7 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
           <div className="space-y-1">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Starting From</label>
             <div className="flex items-center gap-3 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl">
-              <div className="text-emerald-500"><MapPin size={20} /></div>
+              <div className="text-brand-accent"><MapPin size={20} /></div>
               <input 
                 placeholder="Origin (e.g. Daura)"
                 value={origin}
@@ -119,7 +119,7 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
 
           <button 
             onClick={handleSwap}
-            className="absolute right-4 top-1/2 -translate-y-1/2 mt-1 z-10 w-10 h-10 bg-white border-2 border-slate-100 rounded-full flex items-center justify-center text-emerald-600 shadow-sm active:rotate-180 transition-transform duration-300"
+            className="absolute right-4 top-1/2 -translate-y-1/2 mt-1 z-10 w-10 h-10 bg-white border-2 border-slate-100 rounded-full flex items-center justify-center text-brand-secondary shadow-sm active:rotate-180 transition-transform duration-300"
           >
             {ICONS.Swap}
           </button>
@@ -127,7 +127,7 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
           <div className="space-y-1">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Destination</label>
             <div className="flex items-center gap-3 p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl">
-              <div className="text-emerald-500"><MapPin size={20} /></div>
+              <div className="text-brand-accent"><MapPin size={20} /></div>
               <input 
                 placeholder="Where to? (e.g. Kano)"
                 value={destination}
@@ -167,7 +167,7 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
             type="time" 
             value={departureTime}
             onChange={(e) => setDepartureTime(e.target.value)}
-            className="w-full p-5 bg-white border-2 border-slate-200 rounded-2xl text-xl font-black text-black focus:outline-none focus:ring-4 focus:ring-emerald-500/20 transition-all"
+            className="w-full p-5 bg-white border-2 border-slate-200 rounded-2xl text-xl font-black text-black focus:outline-none focus:ring-4 focus:ring-brand-primary/10 transition-all"
           />
         </div>
 
@@ -181,7 +181,7 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
                 onClick={() => setSeats(n)}
                 className={`flex-1 p-5 rounded-2xl font-black text-2xl transition-all ${
                   seats === n 
-                  ? `${COLORS.primary} text-white border-transparent shadow-2xl shadow-emerald-200 scale-105` 
+                  ? `${COLORS.primary} text-white border-transparent shadow-2xl shadow-brand-primary/20 scale-105` 
                   : 'bg-white border-2 text-gray-400 border-slate-100'
                 }`}
               >
@@ -198,7 +198,7 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
             type="number" 
             value={price}
             onChange={(e) => setPrice(Number(e.target.value))}
-            className="w-full p-5 bg-white border-2 border-slate-200 rounded-2xl text-xl font-black text-black focus:outline-none focus:ring-4 focus:ring-emerald-500/20 transition-all"
+            className="w-full p-5 bg-white border-2 border-slate-200 rounded-2xl text-xl font-black text-black focus:outline-none focus:ring-4 focus:ring-brand-primary/10 transition-all"
           />
           <p className="text-[10px] text-gray-400 font-bold px-1">Suggested: ₦{ROUTES.SUGGESTED_PRICE_PER_SEAT.toLocaleString()}</p>
         </div>
@@ -206,7 +206,7 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
         <button 
           onClick={handlePost}
           disabled={isPosting || !origin || !destination}
-          className={`w-full ${COLORS.primary} text-white p-5 rounded-2xl font-black text-xl shadow-2xl shadow-emerald-200 hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-3 mt-6 disabled:opacity-50`}
+          className={`w-full ${COLORS.primary} text-white p-5 rounded-2xl font-black text-xl shadow-2xl shadow-brand-primary/20 hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-3 mt-6 disabled:opacity-50`}
         >
           {isPosting ? (
             <div className="w-7 h-7 border-4 border-white border-t-transparent rounded-full animate-spin"></div>

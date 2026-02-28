@@ -134,10 +134,10 @@ const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bo
       </header>
 
       {/* Balance Card */}
-      <div className={`${COLORS.primary} p-6 rounded-[2.5rem] text-white shadow-xl shadow-emerald-100 space-y-4 relative overflow-hidden`}>
+      <div className={`${COLORS.primary} p-6 rounded-[2.5rem] text-white shadow-xl shadow-brand-primary/20 space-y-4 relative overflow-hidden`}>
         <div className="absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-3xl"></div>
         <div className="space-y-1">
-          <p className="text-emerald-100 text-[10px] font-black uppercase tracking-widest">
+          <p className="text-white/60 text-[10px] font-black uppercase tracking-widest">
             {isDriver ? 'Available for Withdrawal' : 'Escrow Balance'}
           </p>
           <div className="text-4xl font-black">₦{profile.wallet_balance.toLocaleString()}</div>
@@ -153,7 +153,7 @@ const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bo
               </button>
               <button 
                 onClick={handleWithdrawClick}
-                className="flex-1 bg-white text-emerald-600 py-4 rounded-2xl font-black text-sm shadow-sm active:scale-95 transition-all"
+                className="flex-1 bg-white text-brand-primary py-4 rounded-2xl font-black text-sm shadow-sm active:scale-95 transition-all"
               >
                 Quick Payout
               </button>
@@ -161,7 +161,7 @@ const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bo
           ) : (
             <button 
               onClick={() => setShowModal('deposit')}
-              className="flex-1 bg-white text-emerald-600 py-4 rounded-2xl font-black text-sm shadow-sm active:scale-95 transition-all"
+              className="flex-1 bg-white text-brand-primary py-4 rounded-2xl font-black text-sm shadow-sm active:scale-95 transition-all"
             >
               Add Funds / Transfer
             </button>
@@ -190,14 +190,14 @@ const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bo
                   value={amount}
                   onChange={e => setAmount(e.target.value)}
                   placeholder="e.g. 5000"
-                  className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-xl outline-none focus:border-emerald-500 transition-all"
+                  className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-black text-xl outline-none focus:border-brand-primary transition-all"
                 />
               </div>
               
               {showModal === 'withdraw' && (
-                <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 flex gap-3">
-                  <div className="text-emerald-600">{ICONS.Check}</div>
-                  <p className="text-[10px] text-emerald-800 font-bold leading-tight">
+                <div className="p-4 bg-brand-accent/5 rounded-2xl border border-brand-accent/10 flex gap-3">
+                  <div className="text-brand-accent">{ICONS.Check}</div>
+                  <p className="text-[10px] text-brand-primary font-bold leading-tight">
                     Funds will be sent to your verified bank account: {bankDetails?.bank_name} (**{bankDetails?.account_number?.slice(-4)})
                   </p>
                 </div>
@@ -208,7 +208,7 @@ const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bo
               <button 
                 onClick={handleAction}
                 disabled={isProcessing || !amount}
-                className="w-full bg-emerald-600 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-emerald-100 disabled:opacity-50 active:scale-95 transition-all"
+                className="w-full bg-brand-primary text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-brand-primary/20 disabled:opacity-50 active:scale-95 transition-all"
               >
                 {isProcessing ? 'Processing...' : showModal === 'deposit' ? 'Confirm Deposit' : 'Confirm Withdrawal'}
               </button>

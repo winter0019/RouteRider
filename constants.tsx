@@ -26,10 +26,12 @@ export const ROUTES = {
 };
 
 export const COLORS = {
-  primary: 'bg-emerald-600',
-  primaryText: 'text-emerald-600',
-  secondary: 'bg-amber-500',
-  secondaryText: 'text-amber-500',
+  primary: 'bg-brand-primary',
+  primaryText: 'text-brand-primary',
+  secondary: 'bg-brand-secondary',
+  secondaryText: 'text-brand-secondary',
+  accent: 'bg-brand-accent',
+  accentText: 'text-brand-accent',
   background: 'bg-slate-50',
 };
 

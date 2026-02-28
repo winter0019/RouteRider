@@ -496,10 +496,13 @@ const MainApp: React.FC = () => {
   // -------------------------
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-white">
-        <div className="w-12 h-12 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <h2 className="text-xl font-black text-emerald-900">RouteRider</h2>
-        <p className="text-gray-500 font-bold">Loading your profile...</p>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50">
+        <div className="w-24 h-24 bg-white rounded-3xl flex items-center justify-center shadow-2xl shadow-brand-primary/10 mb-8 animate-bounce">
+          <img src="/logo.png" alt="RouteRider" className="w-16 h-16 object-contain" onError={(e) => (e.target as HTMLImageElement).src = "https://picsum.photos/seed/routerider/100/100"} />
+        </div>
+        <div className="w-12 h-12 border-4 border-brand-primary border-t-transparent rounded-full animate-spin mb-4"></div>
+        <h2 className="text-2xl font-black text-brand-primary tracking-tighter">RouteRider</h2>
+        <p className="text-slate-400 font-bold text-sm">Loading your experience...</p>
       </div>
     );
   }
@@ -671,25 +674,26 @@ const MainApp: React.FC = () => {
           </button>
         </div>
       )}
-      <header className="px-4 py-4 flex items-center justify-between border-b sticky top-0 bg-white z-10">
+      <header className="px-4 py-4 flex items-center justify-between border-b sticky top-0 bg-white/80 backdrop-blur-md z-10">
         <button
           onClick={() => setCurrentPage(userRole === "passenger" ? "search" : "dashboard")}
-          className="flex items-center gap-2"
+          className="flex items-center gap-3"
         >
-          <div className={`w-8 h-8 ${COLORS.primary} rounded-full flex items-center justify-center text-white font-black`}>
-            R
+          <div className="w-10 h-10 bg-brand-primary rounded-xl flex items-center justify-center overflow-hidden shadow-lg shadow-brand-primary/20">
+            <img src="/logo.png" alt="R" className="w-full h-full object-contain p-1.5" onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} />
+            <span className="text-white font-black text-xl">R</span>
           </div>
-          <h1 className="font-black text-xl">RouteRider</h1>
+          <h1 className="font-black text-2xl tracking-tighter text-brand-primary">RouteRider</h1>
         </button>
 
         <div className="flex items-center gap-3">
-          <div className="text-[10px] font-black uppercase text-gray-400 bg-slate-100 px-2 py-1 rounded-md">
+          <div className="text-[10px] font-black uppercase text-brand-primary/60 bg-brand-primary/5 px-2 py-1 rounded-lg border border-brand-primary/10">
             {userRole}
           </div>
 
           <button
             onClick={() => setCurrentPage("settings")}
-            className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden border-2 border-emerald-50 shadow-sm"
+            className="w-10 h-10 rounded-xl bg-slate-100 overflow-hidden border-2 border-white shadow-md transition-transform active:scale-95"
           >
             <img
               src={profile?.profile_photo_url || `https://picsum.photos/100/100?seed=${profile?.user_id}`}
@@ -738,7 +742,7 @@ const NavItem: React.FC<{
   <button
     onClick={onClick}
     className={`flex flex-col items-center gap-1 relative transition-all ${
-      active ? "text-emerald-700 scale-110" : "text-gray-500"
+      active ? "text-brand-secondary scale-110" : "text-slate-400"
     }`}
   >
     <div className="relative">

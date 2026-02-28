@@ -53,16 +53,22 @@ const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate, us
   return (
     <div className="space-y-6 text-black">
       <header className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-black">Settings</h2>
-          <p className="text-gray-500 text-sm font-bold">Manage your profile</p>
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-brand-primary rounded-2xl flex items-center justify-center overflow-hidden shadow-lg shadow-brand-primary/10">
+            <img src="/logo.png" alt="R" className="w-full h-full object-contain p-2" onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} />
+            <span className="text-white font-black text-xl">R</span>
+          </div>
+          <div>
+            <h2 className="text-2xl font-black text-brand-primary tracking-tighter">Settings</h2>
+            <p className="text-slate-400 text-sm font-bold">Manage your account</p>
+          </div>
         </div>
         {!isEditing ? (
-          <button onClick={() => setIsEditing(true)} className="px-4 py-2 bg-slate-100 rounded-xl font-black text-xs">Edit</button>
+          <button onClick={() => setIsEditing(true)} className="px-5 py-2.5 bg-white border-2 border-slate-100 rounded-2xl font-black text-xs text-brand-primary shadow-sm active:scale-95 transition-all">Edit Profile</button>
         ) : (
           <div className="flex gap-2">
-            <button onClick={() => setIsEditing(false)} className="px-4 py-2 text-gray-500 font-black text-xs">Cancel</button>
-            <button onClick={handleSave} className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-black text-xs">Save</button>
+            <button onClick={() => setIsEditing(false)} className="px-4 py-2 text-slate-400 font-black text-xs">Cancel</button>
+            <button onClick={handleSave} className="px-5 py-2.5 bg-brand-primary text-white rounded-2xl font-black text-xs shadow-lg shadow-brand-primary/20 active:scale-95 transition-all">Save Changes</button>
           </div>
         )}
       </header>
@@ -85,7 +91,7 @@ const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate, us
               </div>
               <button 
                 onClick={() => fileInputRef.current?.click()}
-                className="absolute -bottom-2 -right-2 w-10 h-10 bg-emerald-600 text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-all"
+                className="absolute -bottom-2 -right-2 w-10 h-10 bg-brand-primary text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-all"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
               </button>

@@ -82,8 +82,8 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ onBook }) => {
   if (isInitialLoad) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
-        <div className="w-12 h-12 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
-        <p className="font-black text-gray-400 animate-pulse">Loading RouteRider...</p>
+        <div className="w-12 h-12 border-4 border-brand-primary border-t-transparent rounded-full animate-spin"></div>
+        <p className="font-black text-slate-400 animate-pulse uppercase tracking-widest text-xs">Loading RouteRider...</p>
       </div>
     );
   }
@@ -105,7 +105,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ onBook }) => {
       <section className="bg-white border-2 border-slate-100 p-5 rounded-[2rem] shadow-sm space-y-4">
         <div className="space-y-3">
           <div className="relative">
-             <div className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-500">
+             <div className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-primary">
                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
              </div>
              <input 
@@ -113,11 +113,11 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ onBook }) => {
                placeholder="From (Origin)" 
                value={originQuery}
                onChange={(e) => setOriginQuery(e.target.value)}
-               className="w-full pl-11 pr-4 py-4 bg-slate-50 border-2 border-transparent focus:border-emerald-500 rounded-2xl font-black text-sm outline-none transition-all"
+               className="w-full pl-11 pr-4 py-4 bg-slate-50 border-2 border-transparent focus:border-brand-primary rounded-2xl font-black text-sm outline-none transition-all"
              />
           </div>
           <div className="relative">
-             <div className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-500">
+             <div className="absolute left-4 top-1/2 -translate-y-1/2 text-brand-secondary">
                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
              </div>
              <input 
@@ -125,7 +125,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ onBook }) => {
                placeholder="To (Destination)" 
                value={destQuery}
                onChange={(e) => setDestQuery(e.target.value)}
-               className="w-full pl-11 pr-4 py-4 bg-slate-50 border-2 border-transparent focus:border-emerald-500 rounded-2xl font-black text-sm outline-none transition-all"
+               className="w-full pl-11 pr-4 py-4 bg-slate-50 border-2 border-transparent focus:border-brand-primary rounded-2xl font-black text-sm outline-none transition-all"
              />
           </div>
           <div className="relative">
@@ -133,7 +133,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ onBook }) => {
                type="date" 
                value={dateQuery}
                onChange={(e) => setDateQuery(e.target.value)}
-               className="w-full px-4 py-4 bg-slate-50 border-2 border-transparent focus:border-emerald-500 rounded-2xl font-black text-sm outline-none transition-all"
+               className="w-full px-4 py-4 bg-slate-50 border-2 border-transparent focus:border-brand-primary rounded-2xl font-black text-sm outline-none transition-all"
              />
           </div>
         </div>
@@ -141,7 +141,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ onBook }) => {
           <button 
             onClick={handleSearch}
             disabled={isSearching || (!originQuery && !destQuery)}
-            className="flex-1 bg-emerald-600 text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-emerald-100 flex items-center justify-center gap-2 hover:bg-emerald-700 active:scale-95 transition-all disabled:opacity-50"
+            className="flex-1 bg-brand-primary text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-brand-primary/20 flex items-center justify-center gap-2 hover:bg-brand-primary/90 active:scale-95 transition-all disabled:opacity-50"
           >
             {isSearching ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : (
               <>
@@ -153,7 +153,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ onBook }) => {
           {hasSearched && (
             <button 
               onClick={handleReset}
-              className="bg-slate-100 text-slate-500 px-4 rounded-2xl font-black text-sm hover:bg-slate-200 active:scale-95 transition-all"
+              className="bg-slate-100 text-brand-primary px-4 rounded-2xl font-black text-sm hover:bg-slate-200 active:scale-95 transition-all"
             >
               Reset
             </button>
@@ -200,8 +200,8 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ onBook }) => {
                     </div>
                   </div>
                   <div className="text-right">
-                     <p className="text-xl font-black text-emerald-600">₦{(trip.price_per_seat || ROUTES.SUGGESTED_PRICE_PER_SEAT).toLocaleString()}</p>
-                     <p className="text-[10px] font-bold text-gray-400">per seat</p>
+                     <p className="text-xl font-black text-brand-secondary">₦{(trip.price_per_seat || ROUTES.SUGGESTED_PRICE_PER_SEAT).toLocaleString()}</p>
+                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">per seat</p>
                   </div>
                 </div>
 
@@ -218,11 +218,11 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ onBook }) => {
 
                 {trip.pickup_landmark && (
                   <div className="flex items-start gap-2 bg-slate-50 p-3 rounded-2xl">
-                    <div className="text-emerald-500 mt-0.5">
+                    <div className="text-brand-accent mt-0.5">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
                     </div>
                     <div className="space-y-0.5">
-                      <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Pickup Landmark</p>
+                      <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Pickup Landmark</p>
                       <p className="text-xs font-black text-slate-700">{trip.pickup_landmark}</p>
                     </div>
                   </div>
@@ -230,12 +230,12 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ onBook }) => {
 
                 <div className="flex items-center justify-between gap-4">
                    <div className="flex-1 flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${remaining > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></span>
-                      <span className={`text-xs font-black ${remaining > 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                      <span className={`w-2 h-2 rounded-full ${remaining > 0 ? 'bg-brand-accent animate-pulse' : 'bg-red-500'}`}></span>
+                      <span className={`text-xs font-black ${remaining > 0 ? 'text-brand-accent' : 'text-red-700'}`}>
                         {remaining > 0 ? `${remaining} seats remaining` : 'Full'}
                       </span>
                    </div>
-                   <div className={`px-4 py-2 rounded-xl font-black text-xs ${isBooked ? 'bg-emerald-100 text-emerald-700' : 'bg-black text-white'}`}>
+                   <div className={`px-4 py-2 rounded-xl font-black text-xs ${isBooked ? 'bg-brand-accent/10 text-brand-accent' : 'bg-black text-white'}`}>
                      {isBooking ? '...' : isBooked ? 'Booked ✓' : 'Book Seat'}
                    </div>
                 </div>
@@ -274,7 +274,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ onBook }) => {
              <header className="flex justify-between items-start">
                 <div className="space-y-1">
                   <h3 className="text-2xl font-black leading-tight">{selectedTrip.route}</h3>
-                  <p className="text-emerald-600 font-black">₦{(selectedTrip.price_per_seat || ROUTES.SUGGESTED_PRICE_PER_SEAT).toLocaleString()} per seat</p>
+                  <p className="text-brand-secondary font-black">₦{(selectedTrip.price_per_seat || ROUTES.SUGGESTED_PRICE_PER_SEAT).toLocaleString()} per seat</p>
                 </div>
                 <button onClick={() => setSelectedTrip(null)} className="p-2 bg-slate-100 rounded-full text-slate-400">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -307,7 +307,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ onBook }) => {
                       onClick={() => setPaymentMethod('paystack')}
                       className={`p-4 rounded-3xl border-2 transition-all flex flex-col items-center gap-2 ${paymentMethod === 'paystack' ? 'border-emerald-500 bg-emerald-50' : 'border-slate-100 bg-white'}`}
                     >
-                      <div className={paymentMethod === 'paystack' ? 'text-emerald-600' : 'text-slate-400'}>{ICONS.Check}</div>
+                      <div className={paymentMethod === 'paystack' ? 'text-brand-accent' : 'text-slate-400'}>{ICONS.Check}</div>
                       <span className="text-[10px] font-black uppercase">Paystack</span>
                     </button>
                   </div>
