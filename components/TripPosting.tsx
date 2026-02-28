@@ -28,7 +28,8 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
 
   const handlePost = () => {
     if (!origin || !destination) return alert("Please enter both origin and destination");
-    if (!pickupLandmark) return alert("Please specify a pickup landmark (e.g. Total Filling Station)");
+    if (!pickupArea.trim()) return alert("Please specify a pickup area (e.g. GRA, Sabon Gari)");
+    if (!pickupLandmark.trim()) return alert("Please specify a pickup landmark (e.g. Total Filling Station, Old Market)");
     
     setIsPosting(true);
     
@@ -140,7 +141,7 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
         {/* Pickup Details */}
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Pickup Area</label>
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Pickup Area <span className="text-red-500">*</span></label>
             <input 
               placeholder="e.g. GRA"
               value={pickupArea}
@@ -149,7 +150,7 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
             />
           </div>
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Pickup Landmark</label>
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest px-1">Pickup Landmark <span className="text-red-500">*</span></label>
             <input 
               placeholder="e.g. Total Station"
               value={pickupLandmark}
