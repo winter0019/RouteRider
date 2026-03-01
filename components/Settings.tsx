@@ -120,7 +120,7 @@ const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate, us
                 value={editData.full_name} 
                 onChange={e => setEditData({...editData, full_name: e.target.value})} 
                 disabled={profile.name_locked && profile.name_correction_used}
-                className={`w-full p-3 bg-slate-50 rounded-xl font-black border-2 border-transparent focus:border-emerald-500 outline-none transition-all ${profile.name_locked && profile.name_correction_used ? 'opacity-50 cursor-not-allowed' : ''}`} 
+                className={`w-full p-3 bg-slate-50 rounded-xl font-black border-2 border-transparent focus:border-brand-primary outline-none transition-all ${profile.name_locked && profile.name_correction_used ? 'opacity-50 cursor-not-allowed' : ''}`} 
               />
               {profile.name_locked && !profile.name_correction_used && (
                 <p className="text-[9px] text-amber-600 font-bold px-1 italic">Note: This is your final allowed name correction.</p>
@@ -169,13 +169,13 @@ const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate, us
         </div>
       ) : (
         <div className="bg-white border-2 border-slate-100 p-6 rounded-3xl flex items-center gap-4 shadow-sm">
-          <div className="w-16 h-16 rounded-2xl bg-slate-100 overflow-hidden border-2 border-emerald-50">
+          <div className="w-16 h-16 rounded-2xl bg-slate-100 overflow-hidden border-2 border-brand-accent/20">
             <img src={profile.profile_photo_url || `https://picsum.photos/150/150?seed=${profile.user_id}`} alt="User" className="w-full h-full object-cover" />
           </div>
           <div>
             <h3 className="font-black text-lg">{profile.full_name}</h3>
             <p className="text-sm text-gray-500 font-bold">{profile.phone_number || 'No phone set'}</p>
-            <div className="mt-1 inline-flex items-center px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase border border-emerald-100">
+            <div className="mt-1 inline-flex items-center px-2 py-0.5 rounded bg-brand-accent/10 text-brand-accent text-[10px] font-black uppercase border border-brand-accent/20">
               Verified {isDriver ? 'Driver' : 'Passenger'} ✓
             </div>
           </div>
@@ -216,7 +216,7 @@ const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate, us
                   <span className="text-gray-500 font-bold text-sm">Notification Preferences</span>
                   <div className="flex flex-wrap gap-1">
                     {profile.preferred_routes?.map(r => (
-                      <span key={r} className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[9px] font-black uppercase rounded border border-emerald-100">{r}</span>
+                      <span key={r} className="px-2 py-0.5 bg-brand-accent/10 text-brand-accent text-[9px] font-black uppercase rounded border border-brand-accent/20">{r}</span>
                     ))}
                     {profile.preferred_areas?.map(a => (
                       <span key={a} className="px-2 py-0.5 bg-amber-50 text-amber-700 text-[9px] font-black uppercase rounded border border-amber-100">{a}</span>
@@ -233,7 +233,7 @@ const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate, us
                   <div className="flex flex-col items-start">
                     <span className="text-gray-500 font-bold text-sm">Bank Payouts</span>
                     {profile.bank_name ? (
-                      <span className="text-[10px] text-emerald-600 font-black uppercase">{profile.bank_name} • {profile.account_number}</span>
+                      <span className="text-[10px] text-brand-accent font-black uppercase">{profile.bank_name} • {profile.account_number}</span>
                     ) : (
                       <span className="text-[10px] text-amber-600 font-black uppercase italic">Not Linked</span>
                     )}
@@ -246,7 +246,7 @@ const SettingsView: React.FC<SettingsProps> = ({ profile, onLogout, onUpdate, us
             )}
             <div className="p-4 flex justify-between">
               <span className="text-gray-500 font-bold text-sm">ID Status</span>
-              <span className="text-emerald-600 font-black text-sm uppercase">Active</span>
+              <span className="text-brand-accent font-black text-sm uppercase">Active</span>
             </div>
           </div>
         </section>

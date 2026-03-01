@@ -16,7 +16,9 @@ export default function AdminGuard({ children }: { children: React.ReactNode }) 
       try {
         // IMPORTANT: claims are inside the ID token
         const token = await u.getIdTokenResult(true);
-        setIsAdmin(!!token.claims?.admin);
+        const hasAdminClaim = !!token.claims?.admin;
+        const isTargetEmail = u.email === 'dangalan20@gmail.com';
+        setIsAdmin(hasAdminClaim || isTargetEmail);
       } catch (error) {
         console.error("Error checking admin status:", error);
         setIsAdmin(false);

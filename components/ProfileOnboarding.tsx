@@ -294,8 +294,8 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
         {step === 2 && role === 'driver' && (
           <div className="space-y-8 animate-in slide-in-from-right-4">
             <header className="space-y-2 text-center">
-              <h2 className="text-3xl font-black">NIN Verification</h2>
-              <p className="text-gray-500 font-bold">We use AI to verify your National Identity Number for safety.</p>
+              <h2 className="text-3xl font-black">Identity Verification</h2>
+              <p className="text-gray-500 font-bold">Snap your NIN card or Driver's License. We use AI to verify your identity for safety.</p>
             </header>
 
             <div className="space-y-6">
@@ -309,7 +309,7 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
                 ) : (
                   <div className="text-center space-y-2 text-slate-400">
                     <div className="flex justify-center">{ICONS.Car}</div>
-                    <p className="font-black text-xs uppercase tracking-widest">Snap or Upload NIN</p>
+                    <p className="font-black text-xs uppercase tracking-widest">Snap NIN or License</p>
                   </div>
                 )}
                 
@@ -349,7 +349,7 @@ const ProfileOnboarding: React.FC<ProfileOnboardingProps> = ({ onComplete }) => 
                   className="w-full bg-slate-900 text-white p-5 rounded-2xl font-black flex items-center justify-center gap-3 disabled:opacity-50"
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                  {formData.nin_image ? 'Retake Photo' : 'Capture NIN Card'}
+                  {formData.nin_image ? 'Retake Photo' : 'Capture Document'}
                 </button>
 
                 <button 

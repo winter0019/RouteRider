@@ -181,7 +181,7 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
                 onClick={() => setSeats(n)}
                 className={`flex-1 p-5 rounded-2xl font-black text-2xl transition-all ${
                   seats === n 
-                  ? `${COLORS.primary} text-white border-transparent shadow-2xl shadow-brand-primary/20 scale-105` 
+                  ? 'bg-brand-primary text-white border-transparent shadow-2xl shadow-brand-primary/20 scale-105' 
                   : 'bg-white border-2 text-gray-400 border-slate-100'
                 }`}
               >
@@ -206,7 +206,7 @@ const TripPosting: React.FC<TripPostingProps> = ({ onPost, activeTrip, onNavigat
         <button 
           onClick={handlePost}
           disabled={isPosting || !origin || !destination}
-          className={`w-full ${COLORS.primary} text-white p-5 rounded-2xl font-black text-xl shadow-2xl shadow-brand-primary/20 hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-3 mt-6 disabled:opacity-50`}
+          className="w-full bg-brand-primary text-white p-5 rounded-2xl font-black text-xl shadow-2xl shadow-brand-primary/20 hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-3 mt-6 disabled:opacity-50"
         >
           {isPosting ? (
             <div className="w-7 h-7 border-4 border-white border-t-transparent rounded-full animate-spin"></div>

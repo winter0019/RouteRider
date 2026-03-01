@@ -86,7 +86,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, activeTrip, bookings, on
                 </div>
               </div>
               <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tight ${
-                activeTrip.status === TripStatus.POSTED ? 'bg-blue-100 text-blue-700 border border-blue-200' : 'bg-orange-100 text-orange-700 border border-orange-200'
+                activeTrip.status === TripStatus.POSTED ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/20' : 'bg-brand-secondary/10 text-brand-secondary border border-brand-secondary/20'
               }`}>
                 {activeTrip.status.replace('_', ' ')}
               </div>
@@ -129,7 +129,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, activeTrip, bookings, on
                     onCompleteTrip(activeTrip.trip_id);
                   }
                 }}
-                className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black text-sm shadow-lg shadow-emerald-100 active:scale-95 transition-all"
+                className="w-full py-4 bg-brand-accent text-white rounded-2xl font-black text-sm shadow-lg shadow-brand-accent/20 active:scale-95 transition-all"
               >
                 Complete Trip & Release Funds
               </button>
@@ -143,7 +143,7 @@ const Dashboard: React.FC<DashboardProps> = ({ profile, activeTrip, bookings, on
             <p className="text-sm text-gray-600 font-black">No active trips posted.</p>
             <button 
               onClick={() => onNavigate('post-trip')}
-              className={`${COLORS.primary} text-white px-8 py-3 rounded-2xl text-sm font-black shadow-xl shadow-emerald-200 hover:scale-[1.05] active:scale-95 transition-all`}
+              className="bg-brand-primary text-white px-8 py-3 rounded-2xl text-sm font-black shadow-xl shadow-brand-primary/20 hover:scale-[1.05] active:scale-95 transition-all"
             >
               Post New Trip
             </button>

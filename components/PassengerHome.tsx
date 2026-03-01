@@ -167,7 +167,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ onBook }) => {
             <h3 className="font-black text-xs text-gray-400 uppercase tracking-widest">
               Search Results
             </h3>
-            <span className="text-[10px] bg-emerald-100 text-emerald-700 font-black px-2 py-0.5 rounded-full uppercase">
+            <span className="text-[10px] bg-brand-accent/10 text-brand-accent font-black px-2 py-0.5 rounded-full uppercase">
               {trips.length} Found
             </span>
           </div>
@@ -183,15 +183,15 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ onBook }) => {
               <div 
                 key={trip.trip_id} 
                 onClick={() => !isBooked && remaining > 0 && setSelectedTrip(trip)}
-                className={`bg-white border-2 border-slate-100 p-5 rounded-3xl shadow-sm space-y-4 animate-in fade-in slide-in-from-bottom-2 transition-all cursor-pointer hover:border-emerald-200 hover:shadow-md ${isBooked ? 'opacity-80' : ''}`}
+                className={`bg-white border-2 border-slate-100 p-5 rounded-3xl shadow-sm space-y-4 animate-in fade-in slide-in-from-bottom-2 transition-all cursor-pointer hover:border-brand-accent/20 hover:shadow-md ${isBooked ? 'opacity-80' : ''}`}
               >
                 <div className="flex justify-between items-start">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+                    <div className="w-12 h-12 rounded-2xl bg-brand-accent/10 flex items-center justify-center text-brand-accent">
                       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>
                     </div>
                     <div>
-                      <h4 className="font-black text-emerald-900 leading-tight">
+                      <h4 className="font-black text-brand-primary leading-tight">
                         {trip.route}
                       </h4>
                       <div className="flex items-center gap-1 text-[10px] font-black text-amber-500 uppercase tracking-tighter mt-0.5">
@@ -355,7 +355,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ onBook }) => {
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-md p-6 animate-in fade-in duration-300">
           <div className="bg-white w-full max-w-sm rounded-[3rem] overflow-hidden shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-10 duration-500">
             {/* Ticket Header */}
-            <div className="bg-emerald-600 p-8 text-center relative">
+            <div className="bg-brand-accent p-8 text-center relative">
               <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
                 <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
                   <path d="M0 0 L100 100 M100 0 L0 100" stroke="white" strokeWidth="0.5" />
@@ -368,7 +368,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ onBook }) => {
                 </svg>
               </div>
               <h3 className="text-3xl font-black text-white tracking-tight">Booking Confirmed!</h3>
-              <p className="text-emerald-100 font-bold text-sm">Show this to your driver at pickup</p>
+              <p className="text-brand-accent/10 font-bold text-sm">Show this to your driver at pickup</p>
             </div>
 
             {/* Ticket Body */}
@@ -376,7 +376,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ onBook }) => {
               {/* Perforated Line Effect */}
               <div className="absolute -top-3 left-0 w-full flex justify-between px-4">
                 {[...Array(12)].map((_, i) => (
-                  <div key={i} className="w-4 h-4 bg-emerald-600 rounded-full -mt-2"></div>
+                  <div key={i} className="w-4 h-4 bg-brand-accent rounded-full -mt-2"></div>
                 ))}
               </div>
 
@@ -393,7 +393,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ onBook }) => {
                 {confirmedTrip.pickup_landmark && (
                   <div className="space-y-1">
                     <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Pickup Point</p>
-                    <h4 className="text-sm font-black text-emerald-700">{confirmedTrip.pickup_landmark}</h4>
+                    <h4 className="text-sm font-black text-brand-accent">{confirmedTrip.pickup_landmark}</h4>
                   </div>
                 )}
 
@@ -407,7 +407,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ onBook }) => {
                     <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Your Driver</p>
                     <h4 className="font-black text-black leading-tight">{confirmedTrip.driver_name || 'Verified Owner'}</h4>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] bg-emerald-100 text-emerald-700 font-black px-2 py-0.5 rounded-full uppercase tracking-tighter">Verified</span>
+                      <span className="text-[10px] bg-brand-accent/10 text-brand-accent font-black px-2 py-0.5 rounded-full uppercase tracking-tighter">Verified</span>
                       <span className="text-[10px] text-amber-500 font-black flex items-center gap-0.5">{ICONS.Star} 4.9</span>
                     </div>
                   </div>
@@ -433,7 +433,7 @@ const PassengerHome: React.FC<PassengerHomeProps> = ({ onBook }) => {
                 <div className="flex items-center justify-between pt-4 border-t border-dashed border-slate-200">
                   <div>
                     <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Amount Paid</p>
-                    <p className="text-xl font-black text-emerald-600">₦{(confirmedTrip.price_per_seat || ROUTES.SUGGESTED_PRICE_PER_SEAT).toLocaleString()}</p>
+                    <p className="text-xl font-black text-brand-accent">₦{(confirmedTrip.price_per_seat || ROUTES.SUGGESTED_PRICE_PER_SEAT).toLocaleString()}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Ticket ID</p>

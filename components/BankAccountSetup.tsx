@@ -136,7 +136,7 @@ const BankAccountSetup: React.FC<BankAccountSetupProps> = ({ onSuccess, onCancel
                 setBankCode(e.target.value);
                 setAccountName('');
               }}
-              className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-sm outline-none focus:border-emerald-500 transition-all appearance-none"
+              className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-sm outline-none focus:border-brand-primary transition-all appearance-none"
             >
               <option value="">Choose your bank...</option>
               {NIGERIAN_BANKS.map(bank => (
@@ -156,14 +156,14 @@ const BankAccountSetup: React.FC<BankAccountSetupProps> = ({ onSuccess, onCancel
                 setAccountName('');
               }}
               placeholder="10-digit account number"
-              className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-sm outline-none focus:border-emerald-500 transition-all"
+              className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold text-sm outline-none focus:border-brand-primary transition-all"
             />
           </div>
 
           {accountName && (
-            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 space-y-1">
-              <p className="text-[10px] text-emerald-600 font-black uppercase tracking-widest">Account Name</p>
-              <p className="text-sm font-black text-emerald-900">{accountName}</p>
+            <div className="p-4 bg-brand-accent/10 rounded-2xl border border-brand-accent/20 space-y-1">
+              <p className="text-[10px] text-brand-accent font-black uppercase tracking-widest">Account Name</p>
+              <p className="text-sm font-black text-brand-primary">{accountName}</p>
             </div>
           )}
         </div>
@@ -173,7 +173,7 @@ const BankAccountSetup: React.FC<BankAccountSetupProps> = ({ onSuccess, onCancel
             <button 
               onClick={handleVerify}
               disabled={isVerifying || !bankCode || accountNumber.length !== 10}
-              className="w-full bg-emerald-600 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-emerald-100 disabled:opacity-50 active:scale-95 transition-all"
+              className="w-full bg-brand-primary text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-brand-primary/20 disabled:opacity-50 active:scale-95 transition-all"
             >
               {isVerifying ? 'Verifying...' : 'Verify Account'}
             </button>
@@ -181,7 +181,7 @@ const BankAccountSetup: React.FC<BankAccountSetupProps> = ({ onSuccess, onCancel
             <button 
               onClick={handleSave}
               disabled={isSaving}
-              className="w-full bg-emerald-600 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-emerald-100 disabled:opacity-50 active:scale-95 transition-all"
+              className="w-full bg-brand-primary text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-brand-primary/20 disabled:opacity-50 active:scale-95 transition-all"
             >
               {isSaving ? 'Saving...' : 'Link Account'}
             </button>

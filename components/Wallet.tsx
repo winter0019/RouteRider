@@ -249,7 +249,7 @@ const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bo
               myRides.map(ride => (
                 <div key={ride.booking_id} className="bg-white border-2 border-slate-100 p-4 rounded-3xl flex items-center justify-between shadow-sm">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+                    <div className="w-10 h-10 rounded-xl bg-brand-accent/10 flex items-center justify-center text-brand-accent">
                       {ICONS.Car}
                     </div>
                     <div>
@@ -260,7 +260,7 @@ const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bo
                   <div className="text-right">
                     <div className="font-black text-sm">₦{ride.amount_paid}</div>
                     <div className={`text-[10px] font-black uppercase ${
-                      ride.status === BookingStatus.ACCEPTED ? 'text-emerald-600' : 'text-amber-500'
+                      ride.status === BookingStatus.ACCEPTED ? 'text-brand-accent' : 'text-amber-500'
                     }`}>
                       {ride.status}
                     </div>
@@ -281,7 +281,7 @@ const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bo
       <section className="space-y-4">
         <div className="flex justify-between items-center px-1">
           <h3 className="font-black text-xs text-gray-400 uppercase tracking-widest">Recent Activity</h3>
-          <button className="text-emerald-600 text-[10px] font-black uppercase tracking-widest">Full History</button>
+          <button className="text-brand-accent text-[10px] font-black uppercase tracking-widest">Full History</button>
         </div>
 
         <div className="space-y-2">
@@ -289,7 +289,7 @@ const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bo
             transactions.map(tx => (
               <div key={tx.transaction_id} className="bg-white border-2 border-slate-100 p-4 rounded-2xl flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-xl ${tx.type === 'deposit' ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'}`}>
+                  <div className={`p-2 rounded-xl ${tx.type === 'deposit' ? 'bg-brand-accent/10 text-brand-accent' : 'bg-orange-50 text-orange-600'}`}>
                     {tx.type === 'deposit' ? ICONS.Check : ICONS.Clock}
                   </div>
                   <div>
@@ -297,7 +297,7 @@ const WalletView: React.FC<WalletProps> = ({ profile, transactions, userRole, bo
                     <div className="text-[10px] text-gray-400 font-bold">{new Date(tx.created_at).toLocaleDateString()}</div>
                   </div>
                 </div>
-                <div className={`font-black ${tx.type === 'deposit' ? 'text-emerald-600' : 'text-gray-900'}`}>
+                <div className={`font-black ${tx.type === 'deposit' ? 'text-brand-accent' : 'text-gray-900'}`}>
                   {tx.type === 'deposit' ? '+' : '-'}₦{tx.amount.toLocaleString()}
                 </div>
               </div>
