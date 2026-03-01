@@ -259,6 +259,7 @@ const MainApp: React.FC = () => {
   const handleCompleteTrip = async (tripId: string) => {
     try {
       await api.completeTrip(tripId);
+      persistActiveTrip(null); // Clear active trip so driver can post again
       await Promise.all([
         refreshTripsFromBackend(),
         refreshWalletFromBackend(),
