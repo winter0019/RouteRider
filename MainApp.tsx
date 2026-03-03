@@ -202,9 +202,11 @@ const MainApp: React.FC = () => {
     try {
       const firestoreProfile = await firestoreService.getUserProfile(profile.user_id);
       if (firestoreProfile) {
+        const isAdmin = !!firestoreProfile.isAdmin || profile.email === 'dangalan20@gmail.com' || auth?.currentUser?.email === 'dangalan20@gmail.com';
         const p: DriverProfile = {
           ...profile,
           full_name: firestoreProfile.full_name,
+          email: firestoreProfile.email || profile.email || auth?.currentUser?.email || undefined,
           phone_number: firestoreProfile.phone_number || firestoreProfile.phone || 'N/A',
           car_make: firestoreProfile.car_make || 'N/A',
           car_model: firestoreProfile.car_model || 'N/A',
@@ -219,7 +221,7 @@ const MainApp: React.FC = () => {
           wallet_balance: firestoreProfile.wallet_balance || 0,
           total_earnings: firestoreProfile.total_earnings || 0,
           profile_photo_url: firestoreProfile.profile_photo_url,
-          isAdmin: !!firestoreProfile.isAdmin,
+          isAdmin: isAdmin,
           bank_name: firestoreProfile.bank_details?.bank_name,
           bank_code: firestoreProfile.bank_details?.bank_code,
           account_number: firestoreProfile.bank_details?.account_number,
@@ -317,9 +319,11 @@ const MainApp: React.FC = () => {
           try {
             const firestoreProfile = await firestoreService.getUserProfile(user.uid);
             if (firestoreProfile) {
+              const isAdmin = !!firestoreProfile.isAdmin || user.email === 'dangalan20@gmail.com';
               const p: DriverProfile = {
                 user_id: user.uid,
                 full_name: firestoreProfile.full_name,
+                email: user.email || firestoreProfile.email,
                 phone_number: firestoreProfile.phone_number || firestoreProfile.phone || 'N/A',
                 car_make: firestoreProfile.car_make || 'N/A',
                 car_model: firestoreProfile.car_model || 'N/A',
@@ -334,7 +338,7 @@ const MainApp: React.FC = () => {
                 wallet_balance: firestoreProfile.wallet_balance || 0,
                 total_earnings: firestoreProfile.total_earnings || 0,
                 profile_photo_url: firestoreProfile.profile_photo_url,
-                isAdmin: !!firestoreProfile.isAdmin,
+                isAdmin: isAdmin,
                 bank_name: firestoreProfile.bank_details?.bank_name,
                 bank_code: firestoreProfile.bank_details?.bank_code,
                 account_number: firestoreProfile.bank_details?.account_number,
